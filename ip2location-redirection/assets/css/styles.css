@@ -30,7 +30,9 @@
 
 .url-container,
 .domain-container,
-.wpml-container, .post-container {
+.parameter-container,
+.wpml-container,
+.post-container {
     padding: 5px 0
 }
 
@@ -44,7 +46,11 @@
     padding-top:10px;
     margin-top: 10px;
 }
-
+.parameter-container input, .wpml-container input {
+    margin: 0;
+    margin-top: 5px;
+    width: 100%
+}
 .wpml-container input {
     margin: 0;
     margin-top: 5px;

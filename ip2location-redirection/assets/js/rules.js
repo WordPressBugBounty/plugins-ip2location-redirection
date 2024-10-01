@@ -24,7 +24,15 @@ jQuery(document).ready(function ($) {
 		promptSave = true;
 	});
 
-	function insert_rule(country_codes, from, to, url_from, url_to, language_code, http_code, status) {
+	function insert_rule(country_codes, from, to, url_from, url_to, new_parameter, language_code, http_code, status) {
+		// Backward Compatibility
+		if (typeof (status) === 'undefined') {
+			status = http_code;
+			http_code = language_code;
+			language_code = new_parameter;
+			new_parameter = '';
+		}
+
 		var countries = {
 			"": "",
 			"AF": "Afghanistan",
@@ -3945,7 +3953,7 @@ jQuery(document).ready(function ($) {
 		var exclude = false;
 		var keep_query = false;
 
-		var $country_list = $('<select data-placeholder="Choose Country..." class="chosen" multiple>').on('change', function () {
+		var $country_list = $('<select data-placeholder="Choose Country or Region..." class="chosen" multiple>').on('change', function () {
 			$(this).parent().find('.country-codes').remove();
 
 			if ($(this).val()) {
@@ -4090,7 +4098,7 @@ jQuery(document).ready(function ($) {
 			.append('<option value=""></option>')
 			.append('<option value="any"> Any Page</option>')
 			.append('<option value="home"> Home Page</option>')
-			.append('<option value="post"> Post/Page</option>')
+			.append('<option value="post"> Custom Page or Post</option>')
 			.append('<option value="url"> [Enter URL]</option>')
 			.append('<option value="domain"> [Enter Domain]</option>');
 
@@ -4148,7 +4156,7 @@ jQuery(document).ready(function ($) {
 			.append('<option value=""></option>')
 			.append('<option value="url"> [Enter URL]</option>')
 			.append('<option value="domain"> [Enter Domain]</option>')
-			.append('<option value="post"> Post/Page</option>');
+			.append('<option value="post"> Custom Page or Post</option>');
 
 		var $post_from_list = $('<select name="post_from[]" class="post-select" data-placeholder="Search...">');
 		var $post_to_list = $('<select name="post_to[]" class="post-select" data-placeholder="Search...">');
@@ -4187,6 +4195,15 @@ jQuery(document).ready(function ($) {
 
 		var $status = $('<select name="rule_status[]">').html('<option value="0"' + ((!status) ? ' selected' : '') + '> Inactive</option><option value="1"' + ((status) ? ' selected' : '') + '> Active</option>');
 
+		var $new_parameter = $('<input type="text" name="new_parameter[]" value="' + new_parameter + '" class="parameter regular-text" placeholder="utm_source=google&utm_medium=referral" maxlength="255">')
+			.on('input', function(e) {
+				$(this).val($(this).val().replace(/^[?&]/g, ''));
+			});
+
+		var $div_parameter = $('<div class="parameter-container">')
+			.append('<label>Append Parameters:</label>')
+			.append($new_parameter);
+
 		var $rule = $('<tr>')
 			.append($('<td>').append($country_list).append('<input type="hidden" name="country_codes[]" value="' + country_codes + '" class="country_codes">').append($('<p />').append($('<label />').append($exclude_checkbox).append($exclude_input).append(' Redirect all <strong>except</strong> locations listed above.'))))
 			.append($('<td>').append($from_list)
@@ -4200,6 +4217,7 @@ jQuery(document).ready(function ($) {
 				.append('<div class="domain-container" style="display:' + ((to == 'domain') ? 'block' : 'none') + '"><input type="text" name="domain_to[]" value="' + url_to + '" class="domain regular-text" placeholder="example.com" maxlength="255" /></div>')
 				.append($('<div class="post-container" style="display:' + ((to.substr(0, 4) == 'post' || to.substr(0, 4) == 'page') ? 'block' : 'none') + '">').append($post_to_list))
 				.append('<div class="wpml-container" style="display:' + ((to.substr(0, 4) == 'post' || to.substr(0, 4) == 'page') ? 'block' : 'none') + '"><label>WPML Language Code:</label><input type="text" name="wpml_code[]" value="' + language_code + '" class="wpml-codes regular-text" maxlength="10"' + ((wpml_installed) ? '' : ' disabled') + ' /><br><small>Enter a <a href="https://wpml.org/" target="_blank">WPML</a> language code to translate destination page.' + ((!wpml_installed) ? ' [Not installed]' : '') + '</small></div>')
+				.append($div_parameter)
 			)
 			.append($('<td>').append($http_code_list))
 			.append($('<td>').append($status))
@@ -4290,15 +4308,19 @@ jQuery(document).ready(function ($) {
 	function load_rules() {
 		if (typeof (rules) !== 'undefined') {
 			$.each(rules, function (i, row) {
-				insert_rule(row.country_codes, row.page_from, row.page_to, row.url_from, row.url_to, row.language_code, row.http_code, row.is_active);
+				if (Object.keys(row).length == 9) {
+					insert_rule(row.country_codes, row.page_from, row.page_to, row.url_from, row.url_to, row.new_parameter, row.language_code, row.http_code, row.is_active);
+				} else {
+					insert_rule(row.country_codes, row.page_from, row.page_to, row.url_from, row.url_to, '', row.language_code, row.http_code, row.is_active);
+				}
 			});
 
-			insert_rule([], '', '', '', '', '', 301, true);
+			insert_rule([], '', '', '', '', '', '', 301, true);
 		}
 	}
 
 	//for wizard
-		$('#btn-get-started').on('click', function (e) {
+	$('#btn-get-started').on('click', function (e) {
 		e.preventDefault();
 
 		$('#modal-get-started').css('display', 'none');
