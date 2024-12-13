@@ -3,7 +3,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.32.2
+ * Version: 1.33.0
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
  * Text Domain: ip2location-redirection.
@@ -574,8 +574,19 @@ class IP2LocationRedirection
 	public function rules_page()
 	{
 		$general_status = '';
+		$cache_warning = '';
+
 		$rules = [];
 		$wpml_settings = get_option('icl_sitepress_settings');
+
+		if (($name = $this->cache_plugin_detected()) !== false) {
+			$cache_warning = '
+			<div class="error">
+				<p>
+					It appears that you are currently using <strong>' . $name . '</strong>, which is not fully compatible with the IP2Location Redirection. This may lead to unintended issues. We recommend disabling and uninstalling the cache plugin.
+				</p>
+			</div>';
+		}
 
 		$this->sanitize_post_inputs();
 
@@ -812,6 +823,7 @@ class IP2LocationRedirection
 		<div class="wrap">
 			<h1>' . __('Rules', 'ip2location-redirection') . '</h1>
 
+			' . $cache_warning . '
 			' . $general_status . '
 
 			<form method="post" novalidate="novalidate">
@@ -2135,6 +2147,30 @@ class IP2LocationRedirection
 	{
 		$this->cache_clear();
 		$this->set_priority();
+	}
+
+	private function cache_plugin_detected()
+	{
+		$plugins = [
+			'Breeze'           => 'breeze/breeze.php',
+			'Cache Enabler'    => 'cache-enabler/cache-enabler.php',
+			'LiteSpeed Cache'  => 'litespeed-cache/litespeed-cache.php',
+			'Super Page Cache' => 'wp-cloudflare-page-cache/wp-cloudflare-super-page-cache.php',
+			'W3 Total Cache'   => 'w3-total-cache/w3-total-cache.php',
+			'WP Fastest Cache' => 'wp-fastest-cache/wpFastestCache.php',
+			'WP Optimizer'     => 'wp-optimize/wp-optimize.php',
+			'WP Rocket'        => 'wp-rocket/wp-rocket.php',
+			'WP Super Cache'   => 'wp-super-cache/wp-cache.php',
+		];
+
+
+		foreach ($plugins as $name => $path) {
+			if (is_plugin_active($path)) {
+				return $name;
+			}
+		}
+
+		return false;
 	}
 
 	private function set_priority()
