@@ -3,7 +3,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.33.1
+ * Version: 1.33.2
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
  * Text Domain: ip2location-redirection.
@@ -138,7 +138,7 @@ class IP2LocationRedirection
 		}
 
 		foreach ($rows as $key => $value) {
-			update_option($key, $value);
+			update_option($key, esc_html($value));
 		}
 
 		update_option('ip2location_redirection_session_message', 'Restore completed.');
