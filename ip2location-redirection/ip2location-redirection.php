@@ -3,7 +3,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.33.2
+ * Version: 1.33.3
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
  * Text Domain: ip2location-redirection.
@@ -138,7 +138,7 @@ class IP2LocationRedirection
 		}
 
 		foreach ($rows as $key => $value) {
-			update_option($key, esc_html($value));
+			update_option($key, sanitize_text_field($value));
 		}
 
 		update_option('ip2location_redirection_session_message', 'Restore completed.');
@@ -575,7 +575,7 @@ class IP2LocationRedirection
 			2 => __('I couldn\'t get the plugin to work', 'ip2location-redirection'),
 			3 => __('The plugin doesn\'t meet my requirements', 'ip2location-redirection'),
 			4 => __('Other concerns', 'ip2location-redirection') . (($others) ? (' - ' . $others) : ''),
-4		];
+			4];
 
 		if (isset($options[$feedback])) {
 			wp_remote_get('https://www.ip2location.com/wp-plugin-feedback?' . http_build_query([
@@ -604,11 +604,11 @@ class IP2LocationRedirection
 
 		$this->sanitize_post_inputs();
 
-		$enable_redirection = (isset($_POST['submit']) && isset($_POST['enable_redirection'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['enable_redirection'])) ? 0 : get_option('ip2location_redirection_enabled'));
-		$first_redirect = (isset($_POST['submit']) && isset($_POST['first_redirect'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['first_redirect'])) ? 0 : get_option('ip2location_redirection_first_redirect'));
-		$enable_noredirect = (isset($_POST['submit']) && isset($_POST['enable_noredirect'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['enable_noredirect'])) ? 0 : get_option('ip2location_redirection_noredirect_enabled'));
-		$ignore_query_string = (isset($_POST['submit']) && isset($_POST['ignore_query_string'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['ignore_query_string'])) ? 0 : get_option('ip2location_redirection_ignore_query_string'));
-		$skip_bots = (isset($_POST['submit']) && isset($_POST['skip_bots'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['skip_bots'])) ? 0 : get_option('ip2location_redirection_skip_bots'));
+		$enable_redirection = (isset($_POST['submit'], $_POST['enable_redirection'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['enable_redirection'])) ? 0 : get_option('ip2location_redirection_enabled'));
+		$first_redirect = (isset($_POST['submit'], $_POST['first_redirect'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['first_redirect'])) ? 0 : get_option('ip2location_redirection_first_redirect'));
+		$enable_noredirect = (isset($_POST['submit'], $_POST['enable_noredirect'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['enable_noredirect'])) ? 0 : get_option('ip2location_redirection_noredirect_enabled'));
+		$ignore_query_string = (isset($_POST['submit'], $_POST['ignore_query_string'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['ignore_query_string'])) ? 0 : get_option('ip2location_redirection_ignore_query_string'));
+		$skip_bots = (isset($_POST['submit'], $_POST['skip_bots'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['skip_bots'])) ? 0 : get_option('ip2location_redirection_skip_bots'));
 		$ip_whitelist = (isset($_POST['ip_whitelist'])) ? sanitize_text_field($_POST['ip_whitelist']) : get_option('ip2location_redirection_ip_whitelist');
 
 		if (isset($_POST['submit'])) {
@@ -1348,9 +1348,9 @@ class IP2LocationRedirection
 		$lookup_mode = (isset($_POST['lookup_mode'])) ? sanitize_text_field($_POST['lookup_mode']) : get_option('ip2location_redirection_lookup_mode');
 		$api_key = (isset($_POST['api_key'])) ? sanitize_text_field($_POST['api_key']) : get_option('ip2location_redirection_api_key');
 		$download_token = (isset($_POST['download_token'])) ? sanitize_text_field($_POST['download_token']) : get_option('ip2location_redirection_token');
-		$enable_region_redirection = (isset($_POST['lookup_mode']) && isset($_POST['enable_region_redirection'])) ? 1 : ((isset($_POST['lookup_mode']) && !isset($_POST['enable_region_redirection'])) ? 0 : get_option('ip2location_redirection_enable_region_redirect'));
-		$download_ipv4_only = (isset($_POST['lookup_mode']) && isset($_POST['download_ipv4_only'])) ? 1 : ((isset($_POST['lookup_mode']) && !isset($_POST['download_ipv4_only'])) ? 0 : get_option('ip2location_redirection_download_ipv4_only'));
-		$enable_debug_log = (isset($_POST['submit']) && isset($_POST['enable_debug_log'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['enable_debug_log'])) ? 0 : get_option('ip2location_redirection_debug_log_enabled'));
+		$enable_region_redirection = (isset($_POST['lookup_mode'], $_POST['enable_region_redirection'])) ? 1 : ((isset($_POST['lookup_mode']) && !isset($_POST['enable_region_redirection'])) ? 0 : get_option('ip2location_redirection_enable_region_redirect'));
+		$download_ipv4_only = (isset($_POST['lookup_mode'], $_POST['download_ipv4_only'])) ? 1 : ((isset($_POST['lookup_mode']) && !isset($_POST['download_ipv4_only'])) ? 0 : get_option('ip2location_redirection_download_ipv4_only'));
+		$enable_debug_log = (isset($_POST['submit'], $_POST['enable_debug_log'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['enable_debug_log'])) ? 0 : get_option('ip2location_redirection_debug_log_enabled'));
 		$real_ip_header = (isset($_POST['real_ip_header'])) ? sanitize_text_field($_POST['real_ip_header']) : get_option('ip2location_redirection_real_ip_header');
 
 		if (!in_array($real_ip_header, array_values($real_ip_headers))) {
@@ -2104,7 +2104,8 @@ class IP2LocationRedirection
 			$footer_text .= sprintf(
 				__('Enjoyed %1$s? Please leave us a %2$s rating. A huge thanks in advance!', 'ip2location-redirection'),
 				'<strong>' . __('IP2Location Redirection', 'ip2location-redirection') . '</strong>',
-				'<a href="https://wordpress.org/support/plugin/ip2location-redirection/reviews/?filter=5/#new-post" target="_blank">&#9733;&#9733;&#9733;&#9733;&#9733;</a>');
+				'<a href="https://wordpress.org/support/plugin/ip2location-redirection/reviews/?filter=5/#new-post" target="_blank">&#9733;&#9733;&#9733;&#9733;&#9733;</a>'
+			);
 		}
 
 		if ($pagenow == 'plugins.php') {
@@ -2176,7 +2177,6 @@ class IP2LocationRedirection
 			'WP Rocket'        => 'wp-rocket/wp-rocket.php',
 			'WP Super Cache'   => 'wp-super-cache/wp-cache.php',
 		];
-
 
 		foreach ($plugins as $name => $path) {
 			if (is_plugin_active($path)) {
