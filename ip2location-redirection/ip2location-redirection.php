@@ -3,7 +3,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.33.3
+ * Version: 1.33.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
  * Text Domain: ip2location-redirection.
@@ -89,6 +89,12 @@ class IP2LocationRedirection
 	public function admin_init()
 	{
 		if (isset($_POST['action']) && $_POST['action'] == 'download_ip2location_redirection_backup') {
+			if (!current_user_can('administrator')) {
+				exit;
+			}
+
+			check_admin_referer('backup');
+
 			$results = $GLOBALS['wpdb']->get_results("SELECT option_name, option_value FROM {$GLOBALS['wpdb']->prefix}options WHERE option_name LIKE 'ip2location_redirection_%'", OBJECT);
 
 			if ($results) {
@@ -1686,6 +1692,7 @@ class IP2LocationRedirection
 			</form>
 
 			<form id="form_download_backup" method="post">
+				' . wp_nonce_field('backup') . '
 				<input type="hidden" name="action" value="download_ip2location_redirection_backup">
 			</from>
 
