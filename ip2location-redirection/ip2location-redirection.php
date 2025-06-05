@@ -3,7 +3,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.33.5
+ * Version: 1.33.6
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
  * Text Domain: ip2location-redirection.
@@ -534,6 +534,8 @@ class IP2LocationRedirection
 
 	public function search_post()
 	{
+		check_ajax_referer('search-post', '__nonce');
+
 		header('Content-Type: application/json');
 
 		$keyword = (isset($_POST['search'])) ? sanitize_text_field($_POST['search']) : '';
@@ -548,7 +550,7 @@ class IP2LocationRedirection
 			exit(json_encode($results));
 		}
 
-		$rows = $GLOBALS['wpdb']->get_results("SELECT `ID`, `post_type`, `post_title` FROM `{$GLOBALS['wpdb']->prefix}posts` WHERE `post_title` LIKE '%$keyword%' AND `post_status` = 'publish' AND `post_type` IN ('post', 'page', 'product') LIMIT 25");
+		$rows = $GLOBALS['wpdb']->get_results($GLOBALS['wpdb']->prepare("SELECT `ID`, `post_type`, `post_title` FROM `{$GLOBALS['wpdb']->prefix}posts` WHERE `post_title` LIKE %s AND `post_status` = 'publish' AND `post_type` IN ('post', 'page', 'product') LIMIT 25", ['%' . $keyword . '%']));
 
 		if (count($rows) > 0) {
 			foreach ($rows as $row) {
@@ -922,6 +924,7 @@ class IP2LocationRedirection
 				<p class="submit">
 					<input type="submit" name="submit" id="submit" class="button button-primary" value="' . __('Save Changes', 'ip2location-redirection') . '" />
 				</p>
+				<input type="hidden" id="search_post_nonce" value="' . wp_create_nonce('search-post') . '">
 				<input type="hidden" id="validate_token_nonce" value="' . wp_create_nonce('validate-token') . '">
 				' . wp_nonce_field('save-rules') . '
 			</form>
@@ -2917,7 +2920,7 @@ class IP2LocationRedirection
 			$post_name = substr($post_name, strrpos($post_name, '/') + 1);
 		}
 
-		$results = $GLOBALS['wpdb']->get_results("SELECT * FROM {$GLOBALS['wpdb']->prefix}posts WHERE post_name = '$post_name'", OBJECT);
+		$results = $GLOBALS['wpdb']->get_results($GLOBALS['wpdb']->prepare("SELECT * FROM {$GLOBALS['wpdb']->prefix}posts WHERE post_name = %s", [$post_name]));
 
 		return ($results) ? $results[0]->ID : null;
 	}
@@ -2929,7 +2932,7 @@ class IP2LocationRedirection
 
 	private function get_permalink($page_id)
 	{
-		$results = $GLOBALS['wpdb']->get_results("SELECT * FROM {$GLOBALS['wpdb']->prefix}posts WHERE `ID` = '$page_id'", OBJECT);
+		$results = $GLOBALS['wpdb']->get_results($GLOBALS['wpdb']->prepare("SELECT * FROM {$GLOBALS['wpdb']->prefix}posts WHERE ID = %d", [$page_id]));
 
 		if ($results) {
 			if (preg_match('/page_id=[0-9]+$/', $results[0]->guid)) {

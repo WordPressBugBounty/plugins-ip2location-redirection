@@ -4,7 +4,7 @@ Donate link: http://www.ip2location.com
 Tags: ip2location, country redirection, website redirect, page redirector, redirection, targeted content, ip address, 301, 302, country, ipv4, ipv6, geolocation
 Requires at least: 4.6
 Tested up to: 6.8
-Stable tag: 1.33.5
+Stable tag: 1.33.6
 
 Redirects visitors to a blog page or a predefined URL based on their country and region geolocated using IP address.
 
@@ -62,6 +62,7 @@ Send us an email at support@ip2location.com
 1. Redirect visitor from California and New York to https://google.com.
 
 == Changelog ==
+* 1.33.6 Improved security checks.
 * 1.33.5 Tested up to WordPress 6.8.
 * 1.33.4 Fixed XSS vulnerabilities on admin_init function.
 * 1.33.3 Fixed restore function.

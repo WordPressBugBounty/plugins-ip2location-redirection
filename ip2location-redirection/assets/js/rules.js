@@ -4080,6 +4080,7 @@ jQuery(document).ready(function ($) {
 							$.post(ajaxurl, {
 								action: 'ip2location_redirection_search_post',
 								search: request.term,
+								__nonce: $('#search_post_nonce').val(),
 							}, function (data) {
 								select.empty();
 
@@ -4140,6 +4141,7 @@ jQuery(document).ready(function ($) {
 							$.post(ajaxurl, {
 								action: 'ip2location_redirection_search_post',
 								search: request.term,
+								__nonce: $('#search_post_nonce').val(),
 							}, function (data) {
 								select.empty();
 
@@ -4248,6 +4250,7 @@ jQuery(document).ready(function ($) {
 				$.post(ajaxurl, {
 					action: 'ip2location_redirection_search_post',
 					search: request.term,
+					__nonce: $('#search_post_nonce').val(),
 				}, function (data) {
 					$post_from_list.empty();
 
@@ -4265,6 +4268,7 @@ jQuery(document).ready(function ($) {
 				$.post(ajaxurl, {
 					action: 'ip2location_redirection_search_post',
 					search: request.term,
+					__nonce: $('#search_post_nonce').val(),
 				}, function (data) {
 					$post_to_list.empty();
 
