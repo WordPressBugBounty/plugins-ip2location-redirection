@@ -3,7 +3,8 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.33.6
+ * Version: 1.34.0
+ * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
  * Text Domain: ip2location-redirection.
@@ -26,7 +27,6 @@ $ip2location_redirection = new IP2LocationRedirection();
 register_activation_hook(__FILE__, [$ip2location_redirection, 'set_default_values']);
 
 add_action('plugins_loaded', [$ip2location_redirection, 'redirect']);
-// add_action('wp', [$ip2location_redirection, 'redirect']);
 add_action('init', [$ip2location_redirection, 'set_locale']);
 add_action('admin_enqueue_scripts', [$ip2location_redirection, 'plugin_enqueues']);
 add_action('admin_init', [$ip2location_redirection, 'admin_init']);
@@ -49,6 +49,10 @@ class IP2LocationRedirection
 		'cache'       => false,
 	];
 
+	private $allowed_options = [
+		'api_key', 'database', 'debug_log_enabled', 'download_ipv4_only', 'enable_region_redirect', 'enabled', 'first_redirect', 'ignore_query_string', 'ip_whitelist', 'lookup_mode', 'noredirect_enabled', 'private_key', 'real_ip_header', 'rules', 'session_message', 'skip_admins', 'skip_bots', 'token'
+	];
+
 	private $debug_log = '';
 
 	public function __construct()
@@ -66,7 +70,7 @@ class IP2LocationRedirection
 			wp_mkdir_p(IP2LOCATION_DIR . 'caches');
 		}
 
-		$this->debug_log = 'debug_' . hash('sha256', get_option('ip2location_redirection_private_key') . get_site_url() . get_option('admin_email')) . '.log';
+		$this->debug_log = 'debug_' . md5($this->get_option('private_key') . get_site_url() . get_option('admin_email')) . '.log';
 
 		add_action('admin_menu', [$this, 'add_admin_menu']);
 	}
@@ -88,14 +92,14 @@ class IP2LocationRedirection
 
 	public function admin_init()
 	{
-		if (isset($_POST['action']) && $_POST['action'] == 'download_ip2location_redirection_backup') {
+		if ($this->post('action') === 'download_ip2location_redirection_backup') {
 			if (!current_user_can('administrator')) {
 				exit;
 			}
 
 			check_admin_referer('backup');
 
-			$results = $GLOBALS['wpdb']->get_results("SELECT option_name, option_value FROM {$GLOBALS['wpdb']->prefix}options WHERE option_name LIKE 'ip2location_redirection_%'", OBJECT);
+			$results = $this->wpdb_get_results("SELECT option_name, option_value FROM {$GLOBALS['wpdb']->prefix}options WHERE option_name LIKE 'ip2location_redirection_%'");
 
 			if ($results) {
 				$options = [];
@@ -125,18 +129,16 @@ class IP2LocationRedirection
 
 		check_admin_referer('restore', '__nonce');
 
-		if (!isset($_FILES['file-restore'])) {
+		if (!isset($_FILES['restore_file']) || $_FILES['restore_file']['error'] !== UPLOAD_ERR_OK) {
 			exit(json_encode([
 				'status'  => 'ERROR',
-				'message' => __('No file is uploaded.', 'ip2location-redirection'),
+				'message' => __('File upload error.', 'ip2location-redirection')
 			]));
 		}
 
-		$file = tempnam(sys_get_temp_dir(), 'restore');
+		$rows = json_decode(file_get_contents($_FILES['restore_file']['tmp_name']));
 
-		move_uploaded_file($_FILES['file-restore']['tmp_name'], $file);
-
-		if (($rows = json_decode(file_get_contents($file))) === null) {
+		if ($rows === null) {
 			exit(json_encode([
 				'status'  => 'ERROR',
 				'message' => __('Invalid file format.', 'ip2location-redirection'),
@@ -144,10 +146,15 @@ class IP2LocationRedirection
 		}
 
 		foreach ($rows as $key => $value) {
-			update_option($key, sanitize_text_field($value));
+			// Skip invalid options
+			if (!in_array(str_replace('ip2location_redirection_', '', $key), $this->allowed_options)) {
+				continue;
+			}
+
+			update_option($key, ((is_array($value)) ? $this->sanitize_array($value) : sanitize_text_field($value)));
 		}
 
-		update_option('ip2location_redirection_session_message', 'Restore completed.');
+		$this->update_option('session_message', 'Restore completed.');
 
 		exit(json_encode([
 			'status' => 'OK',
@@ -213,18 +220,21 @@ class IP2LocationRedirection
 		add_option('ip2location_redirection_api_key', '');
 		add_option('ip2location_redirection_database', '');
 		add_option('ip2location_redirection_debug_log_enabled', '0');
-		add_option('ip2location_redirection_enable_region_redirect', '0');
 		add_option('ip2location_redirection_download_ipv4_only', '0');
+		add_option('ip2location_redirection_enable_region_redirect', '0');
 		add_option('ip2location_redirection_enabled', '1');
 		add_option('ip2location_redirection_first_redirect', '0');
 		add_option('ip2location_redirection_ignore_query_string', '1');
 		add_option('ip2location_redirection_ip_whitelist', '');
 		add_option('ip2location_redirection_lookup_mode', 'bin');
 		add_option('ip2location_redirection_noredirect_enabled', '0');
+		add_option('ip2location_redirection_private_key', '');
+		add_option('ip2location_redirection_real_ip_header', '');
 		add_option('ip2location_redirection_rules', '[]');
+		add_option('ip2location_redirection_session_message', '');
+		add_option('ip2location_redirection_skip_admins', '1');
 		add_option('ip2location_redirection_skip_bots', '0');
 		add_option('ip2location_redirection_token', '');
-		add_option('ip2location_redirection_real_ip_header', '');
 
 		// Create scheduled task
 		if (!wp_next_scheduled('ip2location_redirection_hourly_event')) {
@@ -234,7 +244,7 @@ class IP2LocationRedirection
 
 	public function update_ip2location_database()
 	{
-		check_ajax_referer('update-database', '__nonce');
+		check_admin_referer('update_database', '__nonce');
 
 		@set_time_limit(300);
 
@@ -252,11 +262,9 @@ class IP2LocationRedirection
 		global $wp_filesystem;
 
 		try {
-			$this->sanitize_post_inputs();
-
-			$token = (isset($_POST['token'])) ? sanitize_text_field($_POST['token']) : '';
-			$enable_region = (isset($_POST['enable_region']) && $_POST['enable_region'] == 'true') ? true : false;
-			$ipv4_only = (isset($_POST['ipv4_only']) && $_POST['ipv4_only'] == 'true') ? true : false;
+			$token = $this->post('token');
+			$enable_region = $this->is_checked('enable_region');
+			$ipv4_only = $this->is_checked('ipv4_only');
 
 			$ipv6 = ($ipv4_only) ? '' : 'IPV6';
 
@@ -385,11 +393,11 @@ class IP2LocationRedirection
 			// Move file to IP2Location directory
 			$wp_filesystem->move($working_dir . $bin_database, IP2LOCATION_DIR . $bin_database, true);
 
-			update_option('ip2location_redirection_lookup_mode', 'bin');
-			update_option('ip2location_redirection_database', $bin_database);
-			update_option('ip2location_redirection_token', $token);
-			update_option('ip2location_redirection_download_ipv4_only', ($ipv4_only) ? 1 : 0);
-			update_option('ip2location_redirection_enable_region_redirect', ($enable_region) ? 1 : 0);
+			$this->update_option('lookup_mode', 'bin');
+			$this->update_option('database', $bin_database);
+			$this->update_option('token', $token);
+			$this->update_option('download_ipv4_only', ($ipv4_only) ? 1 : 0);
+			$this->update_option('enable_region_redirect', ($enable_region) ? 1 : 0);
 
 			// Remove working directory
 			$wp_filesystem->delete($working_dir, true);
@@ -411,14 +419,12 @@ class IP2LocationRedirection
 
 	public function validate_token()
 	{
-		check_ajax_referer('validate-token', '__nonce');
+		check_admin_referer('validate_token', '__nonce');
 
 		header('Content-Type: application/json');
 
 		try {
-			$this->sanitize_post_inputs();
-
-			$token = (isset($_POST['token'])) ? sanitize_text_field($_POST['token']) : '';
+			$token = $this->post('token');
 
 			// Check download permission
 			$response = wp_remote_get('https://www.ip2location.com/download-info?' . http_build_query([
@@ -453,7 +459,7 @@ class IP2LocationRedirection
 				}
 			}
 
-			update_option('ip2location_redirection_token', $token);
+			$this->update_option('token', $token);
 
 			exit(json_encode([
 				'status'  => 'OK',
@@ -478,10 +484,10 @@ class IP2LocationRedirection
 			]));
 		}
 
-		check_admin_referer('validate-api-key', '__nonce');
+		check_admin_referer('validate_api_key', '__nonce');
 
 		try {
-			$apiKey = (isset($_POST['key'])) ? sanitize_text_field($_POST['key']) : '';
+			$apiKey = $this->post('key');
 
 			if (empty($apiKey)) {
 				exit(json_encode([
@@ -517,8 +523,8 @@ class IP2LocationRedirection
 				]));
 			}
 
-			update_option('ip2location_redirection_lookup_mode', 'ws');
-			update_option('ip2location_redirection_api_key', $apiKey);
+			$this->update_option('lookup_mode', 'ws');
+			$this->update_option('api_key', $apiKey);
 
 			exit(json_encode([
 				'status'  => 'OK',
@@ -534,11 +540,11 @@ class IP2LocationRedirection
 
 	public function search_post()
 	{
-		check_ajax_referer('search-post', '__nonce');
+		check_admin_referer('search_post', '__nonce');
 
 		header('Content-Type: application/json');
 
-		$keyword = (isset($_POST['search'])) ? sanitize_text_field($_POST['search']) : '';
+		$keyword = $this->post('search');
 
 		$results = [];
 
@@ -550,7 +556,9 @@ class IP2LocationRedirection
 			exit(json_encode($results));
 		}
 
-		$rows = $GLOBALS['wpdb']->get_results($GLOBALS['wpdb']->prepare("SELECT `ID`, `post_type`, `post_title` FROM `{$GLOBALS['wpdb']->prefix}posts` WHERE `post_title` LIKE %s AND `post_status` = 'publish' AND `post_type` IN ('post', 'page', 'product') LIMIT 25", ['%' . $keyword . '%']));
+		$rows = $this->wpdb_get_results("SELECT `ID`, `post_type`, `post_title` FROM `{$GLOBALS['wpdb']->prefix}posts` WHERE `post_title` LIKE %s AND `post_status` = 'publish' AND `post_type` IN ('post', 'page', 'product') LIMIT 25", [
+			'%' . $keyword . '%'
+		]);
 
 		if (count($rows) > 0) {
 			foreach ($rows as $row) {
@@ -571,12 +579,14 @@ class IP2LocationRedirection
 
 	public function submit_feedback()
 	{
-		check_ajax_referer('submit-feedback', '__nonce');
+		if (!current_user_can('deactivate_plugins')) {
+			exit;
+		}
 
-		$this->sanitize_post_inputs();
+		check_admin_referer('submit_feedback', '__nonce');
 
-		$feedback = (isset($_POST['feedback'])) ? sanitize_text_field($_POST['feedback']) : '';
-		$others = (isset($_POST['others'])) ? sanitize_text_field($_POST['others']) : '';
+		$feedback = $this->post('feedback');
+		$others = $this->post('others');
 
 		$options = [
 			1 => __('I no longer need the plugin', 'ip2location-redirection'),
@@ -610,43 +620,35 @@ class IP2LocationRedirection
 			</div>';
 		}
 
-		$this->sanitize_post_inputs();
+		$enable_redirection = $this->is_checked('enable_redirection', $this->get_option('enabled'));
+		$first_redirect = $this->is_checked('first_redirect', $this->get_option('first_redirect'));
+		$enable_noredirect = $this->is_checked('enable_noredirect', $this->get_option('noredirect_enabled'));
+		$ignore_query_string = $this->is_checked('ignore_query_string', $this->get_option('ignore_query_string'));
+		$skip_bots = $this->is_checked('skip_bots', $this->get_option('skip_bots'));
+		$skip_admins = $this->is_checked('skip_admins', $this->get_option('skip_admins'));
+		$ip_whitelist = $this->post('ip_whitelist', $this->get_option('ip_whitelist'));
 
-		$enable_redirection = (isset($_POST['submit'], $_POST['enable_redirection'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['enable_redirection'])) ? 0 : get_option('ip2location_redirection_enabled'));
-		$first_redirect = (isset($_POST['submit'], $_POST['first_redirect'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['first_redirect'])) ? 0 : get_option('ip2location_redirection_first_redirect'));
-		$enable_noredirect = (isset($_POST['submit'], $_POST['enable_noredirect'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['enable_noredirect'])) ? 0 : get_option('ip2location_redirection_noredirect_enabled'));
-		$ignore_query_string = (isset($_POST['submit'], $_POST['ignore_query_string'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['ignore_query_string'])) ? 0 : get_option('ip2location_redirection_ignore_query_string'));
-		$skip_bots = (isset($_POST['submit'], $_POST['skip_bots'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['skip_bots'])) ? 0 : get_option('ip2location_redirection_skip_bots'));
-		$ip_whitelist = (isset($_POST['ip_whitelist'])) ? sanitize_text_field($_POST['ip_whitelist']) : get_option('ip2location_redirection_ip_whitelist');
+		if ($this->post('submit')) {
+			check_admin_referer('save_rules');
 
-		if (isset($_POST['submit'])) {
-			check_admin_referer('save-rules');
-
-			if (isset($_POST['country_codes']) && is_array($_POST['country_codes'])) {
+			if (is_array($this->post('country_codes'))) {
 				$index = 0;
 
-				foreach ($_POST['country_codes'] as $country_codes) {
+				foreach ($this->post('country_codes') as $country_codes) {
 					$country_codes = explode(',', $country_codes);
-
-					$rule_status = (isset($_POST['rule_status'][$index])) ? $_POST['rule_status'][$index] : '';
-					$status_code = (isset($_POST['status_code'][$index])) ? $_POST['status_code'][$index] : '';
-					$wpml_code = (isset($_POST['wpml_code'][$index])) ? $_POST['wpml_code'][$index] : '';
-
-					$from = (isset($_POST['from'][$index])) ? $_POST['from'][$index] : '';
-					$to = (isset($_POST['to'][$index])) ? $_POST['to'][$index] : '';
-
-					$post_from = (isset($_POST['post_from'][$index])) ? $_POST['post_from'][$index] : '';
-					$post_to = (isset($_POST['post_to'][$index])) ? $_POST['post_to'][$index] : '';
-
-					$url_from = (isset($_POST['url_from'][$index])) ? $_POST['url_from'][$index] : '';
-					$url_to = (isset($_POST['url_to'][$index])) ? $_POST['url_to'][$index] : '';
-
-					$new_parameter = (isset($_POST['new_parameter'][$index])) ? $_POST['new_parameter'][$index] : '';
-
-					$domain_from = (isset($_POST['domain_from'][$index])) ? $_POST['domain_from'][$index] : '';
-					$domain_to = (isset($_POST['domain_to'][$index])) ? $_POST['domain_to'][$index] : '';
-
-					$keep_query = (isset($_POST['keep_query'][$index])) ? $_POST['keep_query'][$index] : '';
+					$rule_status = $this->post('rule_status')[$index] ?? '';
+					$status_code = $this->post('status_code')[$index] ?? '';
+					$wpml_code = $this->post('wpml_code')[$index] ?? '';
+					$from = $this->post('from')[$index] ?? '';
+					$to = $this->post('to')[$index] ?? '';
+					$post_from = $this->post('post_from')[$index] ?? '';
+					$post_to = $this->post('post_to')[$index] ?? '';
+					$url_from = $this->post('url_from')[$index] ?? '';
+					$url_to = $this->post('url_to')[$index] ?? '';
+					$new_parameter = $this->post('new_parameter')[$index] ?? '';
+					$domain_from = $this->post('domain_from')[$index] ?? '';
+					$domain_to = $this->post('domain_to')[$index] ?? '';
+					$keep_query = $this->post('keep_query')[$index] ?? '';
 
 					// Domain redirection must redirect from domain to domain
 					if (($from == 'domain' && $to != 'domain') || $to == 'domain' && $from != 'domain') {
@@ -686,7 +688,7 @@ class IP2LocationRedirection
 						$general_status .= '
 						<div id="message" class="error">
 							<p>
-								' . sprintf(__('%1$s is not a domain name.', 'ip2location-redirection'), '<strong>' . $domain_from . '</strong>') . '
+								' . sprintf(__('%1$s is not a domain name.', 'ip2location-redirection'), '<strong>' . esc_html($domain_from) . '</strong>') . '
 							</p>
 						</div>';
 
@@ -697,7 +699,7 @@ class IP2LocationRedirection
 						$general_status .= '
 						<div id="message" class="error">
 							<p>
-								' . sprintf(__('%1$s is not a domain name.', 'ip2location-redirection'), '<strong>' . $domain_to . '</strong>') . '
+								' . sprintf(__('%1$s is not a domain name.', 'ip2location-redirection'), '<strong>' . esc_html($domain_to) . '</strong>') . '
 							</p>
 						</div>';
 
@@ -721,7 +723,7 @@ class IP2LocationRedirection
 						$general_status .= '
 						<div id="message" class="error">
 							<p>
-								' . sprintf(__('Target domain and destination domain %1$s cannot be same.', 'ip2location-redirection'), '<strong>' . $domain_from . '</strong>') . '
+								' . sprintf(__('Target domain and destination domain %1$s cannot be same.', 'ip2location-redirection'), '<strong>' . esc_html($domain_from) . '</strong>') . '
 							</p>
 						</div>';
 
@@ -732,7 +734,7 @@ class IP2LocationRedirection
 						$general_status .= '
 						<div id="message" class="error">
 							<p>
-								' . sprintf(__('%1$s is not a valid URL.', 'ip2location-redirection'), '<strong>' . $_POST['url_form'][$index] . '</strong>') . '
+								' . sprintf(__('%1$s is not a valid URL.', 'ip2location-redirection'), '<strong>' . esc_html($this->post('url_form')[$index]) . '</strong>') . '
 							</p>
 						</div>';
 
@@ -743,7 +745,7 @@ class IP2LocationRedirection
 						$general_status .= '
 						<div id="message" class="error">
 							<p>
-								' . sprintf(__('%1$s is not a valid URL.', 'ip2location-redirection'), '<strong>' . $url_to . '</strong>') . '
+								' . sprintf(__('%1$s is not a valid URL.', 'ip2location-redirection'), '<strong>' . esc_html($url_to) . '</strong>') . '
 							</p>
 						</div>';
 
@@ -764,7 +766,7 @@ class IP2LocationRedirection
 
 					$idx = 0;
 					foreach ($country_codes as $country_code) {
-						if ($_POST['exclude'][$index]) {
+						if ($this->post('exclude')[$index]) {
 							$country_codes[$idx] = (substr($country_code, 0, 1) == '-') ? $country_code : ('-' . $country_code);
 						} else {
 							$country_codes[$idx] = (substr($country_code, 0, 1) == '-') ? substr($country_code, 1) : $country_code;
@@ -798,41 +800,19 @@ class IP2LocationRedirection
 				}
 			}
 
-			$records = explode(';', $ip_whitelist);
-
-			if (count($records) > 0) {
-				$filtered = [];
-
-				foreach ($records as $record) {
-					// CIDR notation
-					if (strpos($record, '/') !== false) {
-						list($ip, $range) = explode('/', $record);
-
-						if (filter_var($ip, \FILTER_VALIDATE_IP, \FILTER_FLAG_IPV4)) {
-							if ($range >= 1 && $range <= 32) {
-								$filtered[] = $record;
-							}
-						} elseif (filter_var($ip, \FILTER_VALIDATE_IP, \FILTER_FLAG_IPV6)) {
-							if ($range >= 1 && $range <= 128) {
-								$filtered[] = $record;
-							}
-						}
-					} elseif (filter_var($record, \FILTER_VALIDATE_IP)) {
-						$filtered[] = $record;
-					}
-				}
-
-				$ip_whitelist = implode(';', $filtered);
+			if ($ip_whitelist) {
+				$ip_whitelist = $this->sanitize_list($ip_whitelist);
 			}
 
 			if (empty($general_status)) {
-				update_option('ip2location_redirection_enabled', $enable_redirection);
-				update_option('ip2location_redirection_first_redirect', $first_redirect);
-				update_option('ip2location_redirection_rules', json_encode($rules));
-				update_option('ip2location_redirection_noredirect_enabled', $enable_noredirect);
-				update_option('ip2location_redirection_ignore_query_string', $ignore_query_string);
-				update_option('ip2location_redirection_skip_bots', $skip_bots);
-				update_option('ip2location_redirection_ip_whitelist', $ip_whitelist);
+				$this->update_option('enabled', $enable_redirection);
+				$this->update_option('first_redirect', $first_redirect);
+				$this->update_option('rules', json_encode($rules));
+				$this->update_option('noredirect_enabled', $enable_noredirect);
+				$this->update_option('ignore_query_string', $ignore_query_string);
+				$this->update_option('skip_bots', $skip_bots);
+				$this->update_option('skip_admins', $skip_admins);
+				$this->update_option('ip_whitelist', $ip_whitelist);
 
 				$general_status = '
 				<div id="message" class="updated">
@@ -890,7 +870,7 @@ class IP2LocationRedirection
 							</p>
 
 							<fieldset>
-								<input type="text" name="ip_whitelist" id="ip_whitelist" value="' . $ip_whitelist . '" class="regular-text ip-address-list" />
+								<input type="text" name="ip_whitelist" id="ip_whitelist" value="' . esc_attr($ip_whitelist) . '" class="regular-text ip-address-list" />
 								<p class="description">' . __('Please enter IP address or CIDR notation.', 'ip2location-redirection') . '</p>
 							</fieldset>
 						</td>
@@ -913,9 +893,9 @@ class IP2LocationRedirection
 					</tr>
 					<tr>
 						<td>
-							<label for="skip_bots">
-								<input type="checkbox" name="skip_bots" id="skip_bots"' . (($skip_bots) ? ' checked' : '') . '>
-								' . __('Do not redirect bots and crawlers.', 'ip2location-redirection') . '
+							<label for="skip_admins">
+								<input type="checkbox" name="skip_admins" id="skip_admins"' . (($skip_admins) ? ' checked' : '') . '>
+								' . __('Do not redirect administrators.', 'ip2location-redirection') . '
 							</label>
 						</td>
 					</tr>
@@ -924,16 +904,16 @@ class IP2LocationRedirection
 				<p class="submit">
 					<input type="submit" name="submit" id="submit" class="button button-primary" value="' . __('Save Changes', 'ip2location-redirection') . '" />
 				</p>
-				<input type="hidden" id="search_post_nonce" value="' . wp_create_nonce('search-post') . '">
-				<input type="hidden" id="validate_token_nonce" value="' . wp_create_nonce('validate-token') . '">
-				' . wp_nonce_field('save-rules') . '
+				<input type="hidden" id="search_post_nonce" value="' . wp_create_nonce('search_post') . '">
+				<input type="hidden" id="validate_token_nonce" value="' . wp_create_nonce('validate_token') . '">
+				' . wp_nonce_field('save_rules') . '
 			</form>
 
 			<div class="clear"></div>
 		</div>
 		<input type="hidden" id="is_region_supported" value="' . (($this->is_region_supported()) ? 'true' : 'false') . '">';
 
-		if (($records = json_decode(get_option('ip2location_redirection_rules'))) !== null) {
+		if (($records = json_decode($this->get_option('rules'))) !== null) {
 			if (!isset($records[0]->is_active)) {
 				$list = [];
 
@@ -989,11 +969,11 @@ class IP2LocationRedirection
 					}
 				}
 
-				update_option('ip2location_redirection_rules', json_encode($list));
+				$this->update_option('rules', json_encode($list));
 			}
 		}
 
-		$rules = json_decode(get_option('ip2location_redirection_rules'));
+		$rules = json_decode($this->get_option('rules'));
 
 		if ($rules) {
 			for ($i = 0; $i < count($rules); ++$i) {
@@ -1262,8 +1242,8 @@ class IP2LocationRedirection
 					</p>
 				</div>
 			</div>
-			<input type="hidden" id="update_nonce" value="' . wp_create_nonce('update-database') . '">
-			<input type="hidden" id="validate_api_key_nonce" value="' . wp_create_nonce('validate-api-key') . '">';
+			<input type="hidden" id="update_nonce" value="' . wp_create_nonce('update_database') . '">
+			<input type="hidden" id="validate_api_key_nonce" value="' . wp_create_nonce('validate_api_key') . '">';
 		}
 	}
 
@@ -1271,13 +1251,11 @@ class IP2LocationRedirection
 	{
 		$disabled = (!$this->is_setup_completed());
 
-		$this->sanitize_post_inputs();
-
 		$ip_lookup_status = '';
 
-		$ip_address = (isset($_POST['ip_address'])) ? sanitize_text_field($_POST['ip_address']) : $this->get_ip();
+		$ip_address = $this->post('ip_address', $this->ip());
 
-		if (isset($_POST['submit'])) {
+		if ($this->post('submit')) {
 			if (!filter_var($ip_address, \FILTER_VALIDATE_IP, \FILTER_FLAG_NO_PRIV_RANGE | \FILTER_FLAG_NO_RES_RANGE)) {
 				$ip_lookup_status = '
 				<div id="message" class="error">
@@ -1294,14 +1272,14 @@ class IP2LocationRedirection
 					<div id="message" class="error">
 						<p>
 							<strong>' . __('ERROR', 'ip2location-redirection') . '</strong>:
-							' . sprintf(__('Unable to lookup IP address %1$s.', 'ip2location-redirection'), '<strong>' . htmlspecialchars($ip_address) . '</strong>') . '
+							' . sprintf(__('Unable to lookup IP address %1$s.', 'ip2location-redirection'), '<strong>' . esc_html($ip_address) . '</strong>') . '
 						</p>
 					</div>';
 				} else {
 					$ip_lookup_status = '
 					<div id="message" class="updated">
 						<p>
-							' . sprintf(__('IP address %1$s belongs to %2$s.', 'ip2location-redirection'), '<code>' . htmlspecialchars($ip_address) . '</code>', '<strong>' . $result['country_name'] . ' (' . $result['country_code'] . ')' . (($result['region_name']) ? (', ' . $result['region_name']) : '') . '</strong>') . '
+							' . sprintf(__('IP address %1$s belongs to %2$s.', 'ip2location-redirection'), '<code>' . esc_html($ip_address) . '</code>', '<strong>' . $result['country_name'] . ' (' . $result['country_code'] . ')' . (($result['region_name']) ? (', ' . $result['region_name']) : '') . '</strong>') . '
 						</p>
 					</div>';
 				}
@@ -1319,7 +1297,7 @@ class IP2LocationRedirection
 					<tr>
 						<th scope="row"><label for="ip_address">' . __('IP Address', 'ip2location-redirection') . '</label></th>
 						<td>
-							<input name="ip_address" type="text" id="ip_address" value="' . htmlspecialchars($ip_address) . '" class="regular-text"' . (($disabled) ? ' disabled' : '') . ' />
+							<input name="ip_address" type="text" id="ip_address" value="' . esc_attr($ip_address) . '" class="regular-text"' . (($disabled) ? ' disabled' : '') . ' />
 							<p class="description">' . __('Enter a valid IP address to lookup for country information.', 'ip2location-redirection') . '</p>
 						</td>
 					</tr>
@@ -1338,8 +1316,6 @@ class IP2LocationRedirection
 	{
 		$disabled = (!$this->is_setup_completed());
 
-		$this->sanitize_post_inputs();
-
 		$settings_status = '';
 
 		$real_ip_headers = [
@@ -1354,13 +1330,13 @@ class IP2LocationRedirection
 			'HTTP_X_SUCURI_CLIENTIP',
 		];
 
-		$lookup_mode = (isset($_POST['lookup_mode'])) ? sanitize_text_field($_POST['lookup_mode']) : get_option('ip2location_redirection_lookup_mode');
-		$api_key = (isset($_POST['api_key'])) ? sanitize_text_field($_POST['api_key']) : get_option('ip2location_redirection_api_key');
-		$download_token = (isset($_POST['download_token'])) ? sanitize_text_field($_POST['download_token']) : get_option('ip2location_redirection_token');
-		$enable_region_redirection = (isset($_POST['lookup_mode'], $_POST['enable_region_redirection'])) ? 1 : ((isset($_POST['lookup_mode']) && !isset($_POST['enable_region_redirection'])) ? 0 : get_option('ip2location_redirection_enable_region_redirect'));
-		$download_ipv4_only = (isset($_POST['lookup_mode'], $_POST['download_ipv4_only'])) ? 1 : ((isset($_POST['lookup_mode']) && !isset($_POST['download_ipv4_only'])) ? 0 : get_option('ip2location_redirection_download_ipv4_only'));
-		$enable_debug_log = (isset($_POST['submit'], $_POST['enable_debug_log'])) ? 1 : ((isset($_POST['submit']) && !isset($_POST['enable_debug_log'])) ? 0 : get_option('ip2location_redirection_debug_log_enabled'));
-		$real_ip_header = (isset($_POST['real_ip_header'])) ? sanitize_text_field($_POST['real_ip_header']) : get_option('ip2location_redirection_real_ip_header');
+		$lookup_mode = $this->post('lookup_mode', $this->get_option('lookup_mode'));
+		$api_key = $this->post('api_key', $this->get_option('api_key'));
+		$download_token = $this->post('download_token', $this->get_option('token'));
+		$enable_region_redirection = $this->is_checked('enable_region_redirection', $this->get_option('enable_region_redirect'));
+		$download_ipv4_only = $this->is_checked('download_ipv4_only', $this->get_option('download_ipv4_only'));
+		$enable_debug_log = $this->post('enabled_debug_log', $this->get_option('debug_log_enabled'));
+		$real_ip_header = $this->post('real_ip_header', $this->get_option('real_ip_header'));
 
 		if (!in_array($real_ip_header, array_values($real_ip_headers))) {
 			$real_ip_header = '';
@@ -1370,8 +1346,8 @@ class IP2LocationRedirection
 			$enable_region_redirection = 0;
 		}
 
-		if (isset($_POST['submit'])) {
-			check_admin_referer('save-settings');
+		if ($this->post('submit')) {
+			check_admin_referer('save_settings');
 
 			if ($lookup_mode == 'ws') {
 				if (!empty($api_key)) {
@@ -1408,7 +1384,7 @@ class IP2LocationRedirection
 									</p>
 								</div>';
 							} else {
-								update_option('ip2location_redirection_api_key', $api_key);
+								$this->update_option('api_key', $api_key);
 							}
 						}
 					} else {
@@ -1421,31 +1397,31 @@ class IP2LocationRedirection
 								</p>
 							</div>';
 						} else {
-							update_option('ip2location_redirection_api_key', $api_key);
+							$this->update_option('api_key', $api_key);
 						}
 					}
 				} else {
-					update_option('ip2location_redirection_api_key', '');
+					$this->update_option('api_key', '');
 				}
 			}
 
 			if (empty($settings_status)) {
 				if (!$enable_debug_log) {
-					if (file_exists(IPLR_ROOT . $this->debug_log)) {
-						@unlink(IPLR_ROOT . $this->debug_log);
+					if (file_exists(IP2LOCATION_DIR . $this->debug_log)) {
+						@unlink(IP2LOCATION_DIR . $this->debug_log);
 					}
 				} else {
-					if (!get_option('ip2location_redirection_private_key')) {
+					if (!$this->get_option('private_key')) {
 						add_option('ip2location_redirection_private_key', hash('sha256', microtime(true) . get_site_url() . get_option('admin_email')));
 					}
 				}
 
-				update_option('ip2location_redirection_lookup_mode', $lookup_mode);
-				update_option('ip2location_redirection_enable_region_redirect', $enable_region_redirection);
-				update_option('ip2location_redirection_token', $download_token);
-				update_option('ip2location_redirection_debug_log_enabled', $enable_debug_log);
-				update_option('ip2location_redirection_download_ipv4_only', $download_ipv4_only);
-				update_option('ip2location_redirection_real_ip_header', $real_ip_header);
+				$this->update_option('lookup_mode', $lookup_mode);
+				$this->update_option('enable_region_redirect', $enable_region_redirection);
+				$this->update_option('token', $download_token);
+				$this->update_option('debug_log_enabled', $enable_debug_log);
+				$this->update_option('download_ipv4_only', $download_ipv4_only);
+				$this->update_option('real_ip_header', $real_ip_header);
 
 				$settings_status .= '
 				<div id="message" class="updated">
@@ -1462,13 +1438,13 @@ class IP2LocationRedirection
 
 			' . $settings_status;
 
-		if (get_option('ip2location_redirection_session_message')) {
+		if ($this->get_option('session_message')) {
 			echo '
 			<div class="updated">
-				<p>' . get_option('ip2location_redirection_session_message') . '</p>
+				<p>' . $this->get_option('session_message') . '</p>
 			</div>';
 
-			update_option('ip2location_redirection_session_message', '');
+			$this->update_option('session_message', '');
 		}
 
 		echo '
@@ -1496,7 +1472,7 @@ class IP2LocationRedirection
 											<label for="download_token">' . __('Download Token', 'ip2location-redirection') . '</label>
 										</th>
 										<td>
-											<input type="text" name="download_token" id="download_token" value="' . $download_token . '" class="regular-text code input-field"' . (($disabled) ? ' disabled' : '') . ' />
+											<input type="text" name="download_token" id="download_token" value="' . esc_attr($download_token) . '" class="regular-text code input-field"' . (($disabled) ? ' disabled' : '') . ' />
 											<p class="description">
 												' . __('Enter your IP2Location download token.', 'ip2location-redirection') . '
 											</p>
@@ -1531,7 +1507,7 @@ class IP2LocationRedirection
 											<label>' . __('Database File', 'ip2location-redirection') . '</label>
 										</th>
 										<td>
-											<div>' . ((!is_file(IP2LOCATION_DIR . get_option('ip2location_redirection_database'))) ? '<span class="dashicons dashicons-warning" title="' . __('Database file not found.', 'ip2location-redirection') . '"></span>' : '') . get_option('ip2location_redirection_database') . '
+											<div>' . ((!is_file(IP2LOCATION_DIR . $this->get_option('database'))) ? '<span class="dashicons dashicons-warning" title="' . __('Database file not found.', 'ip2location-redirection') . '"></span>' : '') . esc_html($this->get_option('database')) . '
 										</td>
 									</tr>
 									<tr>
@@ -1547,7 +1523,7 @@ class IP2LocationRedirection
 											<label>' . __('Database Date', 'ip2location-redirection') . '</label>
 										</th>
 										<td>
-											' . (($date) ?: '-') . '
+											' . esc_html(($date) ?: '-') . '
 										</td>
 									</tr>
 									<tr>
@@ -1561,13 +1537,13 @@ class IP2LocationRedirection
 								</table>
 								</div>';
 
-		if (preg_match('/LITE/', get_option('ip2location_redirection_database'))) {
-			echo '
-								<p class="description">
-									' . sprintf(__('If you are looking for high accuracy result, you should consider using the commercial version of %1$sIP2Location BIN database%2$s.', 'ip2location-redirection'), '<a href="https://www.ip2location.com/database/db3-ip-country-region-city#wordpress-wzdir" target="_blank">', '</a>') . '
-								</p>';
-		}
-		echo '
+								if (preg_match('/LITE/', $this->get_option('database'))) {
+									echo '
+									<p class="description">
+										' . sprintf(__('If you are looking for high accuracy result, you should consider using the commercial version of %1$sIP2Location BIN database%2$s.', 'ip2location-redirection'), '<a href="https://www.ip2location.com/database/db3-ip-country-region-city#wordpress-wzdir" target="_blank">', '</a>') . '
+									</p>';
+								}
+								echo '
 							</div>
 							<div id="api_web_service"' . (($lookup_mode == 'bin') ? ' style="display:none"' : '') . '>
 								<div class="iplr-panel">
@@ -1594,34 +1570,34 @@ class IP2LocationRedirection
 											<label for="api_key">' . __('API Key', 'ip2location-redirection') . '</label>
 										</th>
 										<td>
-											<input name="api_key" type="text" id="api_key" value="' . htmlspecialchars($api_key) . '" class="regular-text" />';
+											<input name="api_key" type="text" id="api_key" value="' . esc_attr($api_key) . '" class="regular-text" />';
 
-		if ($legacyApi) {
-			echo ' <strong><i>(legacy API)</i></strong>';
-		}
+											if ($legacyApi) {
+												echo ' <strong><i>(legacy API)</i></strong>';
+											}
 
-		echo '
+											echo '
 											<p class="description">' . sprintf(__('Your IP2Location %1$sGeolocation%2$s API key.', 'ip2location-redirection'), '<a href="https://www.ip2location.io/pricing" target="_blank">', '</a>') . '</p>
 										</td>
 									</tr>';
 
-		if (!empty($api_key) && $legacyApi) {
-			if (!empty($json)) {
-				if (preg_match('/^[0-9]+$/', $json->response)) {
-					echo '
-									<tr>
-										<th scope="row">
-											<label for="available_credit">' . __('Available Credit', 'ip2location-redirection') . '</label>
-										</th>
-										<td>
-											' . number_format($json->response, 0, '', ',') . '
-										</td>
-									</tr>';
-				}
-			}
-		}
+									if (!empty($api_key) && $legacyApi) {
+										if (!empty($json)) {
+											if (preg_match('/^[0-9]+$/', $json->response)) {
+												echo '
+												<tr>
+													<th scope="row">
+														<label for="available_credit">' . __('Available Credit', 'ip2location-redirection') . '</label>
+													</th>
+													<td>
+														' . number_format($json->response, 0, '', ',') . '
+													</td>
+												</tr>';
+											}
+										}
+									}
 
-		echo '
+									echo '
 									</table>
 								</div>
 							</div>
@@ -1632,7 +1608,7 @@ class IP2LocationRedirection
 							<label for="enable_debug_log">
 								<input type="checkbox" name="enable_debug_log" id="enable_debug_log" value="1"' . (($enable_debug_log == 1) ? ' checked' : '') . (($disabled) ? ' disabled' : '') . ' /> ' . __('Enable Debugging Log', 'ip2location-redirection') . '
 								<p class="description">
-									' . sprintf(__('Debug log will store under %1s.', 'ip2location-redirection'), IPLR_ROOT . $this->debug_log) . '
+									' . sprintf(__('Debug log will store under %1s.', 'ip2location-redirection'), IP2LOCATION_DIR . $this->debug_log) . '
 									<br>
 									<strong>For security concerns, please disable this option after completed debugging process.</strong>
 								</p>
@@ -1646,18 +1622,19 @@ class IP2LocationRedirection
 						<td>
 							<select name="real_ip_header" id="real_ip_header">
 								<option value=""' . ((empty($real_ip_header)) ? ' selected' : '') . '> No Override</option>';
-		foreach ($real_ip_headers as $value) {
-			echo '
-								<option value="' . $value . '"' . (($real_ip_header == $value) ? ' selected' : '') . '> ' . $value . '</option>';
-		}
 
-		echo '
+								foreach ($real_ip_headers as $value) {
+									echo '
+									<option value="' . $value . '"' . (($real_ip_header == $value) ? ' selected' : '') . '> ' . $value . '</option>';
+								}
+
+							echo '
 							</select>
 							<p class="description">
 								' . __('If your WordPress is installed behind a reverse proxy or load balancer, the real IP address of the visitors may not forwarded correctly and causing inaccurate country results. Use this option to override the IP detected by IP2Location.', 'ip2location-redirection') . '
 							</p>
 							<p class="description">
-								' . __('Detected IP: <strong>' . $this->get_ip() . '</strong>.', 'ip2location-redirection') . '
+								' . __('Detected IP: <strong>' . esc_html($this->ip()) . '</strong>.', 'ip2location-redirection') . '
 							</p>
 						</td>
 					</tr>
@@ -1677,7 +1654,7 @@ class IP2LocationRedirection
 							<label>' . __('Restore', 'ip2location-redirection') . '</label>
 						</th>
 						<td>
-							<div id="file-restore"></div>
+							<div id="restore_file"></div>
 							<p class="description">
 								' . __('Restore settings from previous installation.', 'ip2location-redirection') . '
 							</p>
@@ -1690,8 +1667,8 @@ class IP2LocationRedirection
 					<input type="submit" name="submit" id="submit" class="button button-primary" value="' . __('Save Changes', 'ip2location-redirection') . '"' . (($disabled) ? ' disabled' : '') . ' />
 				</p>
 
-				<input type="hidden" id="update_nonce" value="' . wp_create_nonce('update-database') . '">
-				' . wp_nonce_field('save-settings') . '
+				<input type="hidden" id="update_nonce" value="' . wp_create_nonce('update_database') . '">
+				' . wp_nonce_field('save_settings') . '
 			</form>
 
 			<form id="form_download_backup" method="post">
@@ -1730,7 +1707,7 @@ class IP2LocationRedirection
 			return;
 		}
 
-		if (!get_option('ip2location_redirection_enabled')) {
+		if (!$this->get_option('enabled')) {
 			$this->write_debug_log(__('Redirection disabled.', 'ip2location-redirection'));
 
 			return;
@@ -1742,19 +1719,19 @@ class IP2LocationRedirection
 		header('Cache-Control: max-age=0, no-cache, no-store, must-revalidate');
 		header('Pragma: no-cache');
 
-		if (get_option('ip2location_redirection_ip_whitelist')) {
-			$records = explode(';', get_option('ip2location_redirection_ip_whitelist'));
+		if ($this->get_option('ip_whitelist')) {
+			$records = explode(';', $this->get_option('ip_whitelist'));
 
 			foreach ($records as $record) {
 				// CIDR notation
 				if (strpos($record, '/') !== false) {
-					if ($this->cidr_match($this->get_ip(), $record)) {
+					if ($this->cidr_match($this->ip(), $record)) {
 						$this->write_debug_log('IP is in whitelist.');
 
 						return;
 					}
 				} else {
-					if ($this->get_ip() == $record) {
+					if ($this->ip() == $record) {
 						$this->write_debug_log('IP is in whitelist.');
 
 						return;
@@ -1763,21 +1740,21 @@ class IP2LocationRedirection
 			}
 		}
 
-		if (get_option('ip2location_redirection_skip_bots') && $this->is_bot()) {
+		if ($this->get_option('skip_bots') && $this->is_bot()) {
 			$this->write_debug_log('Web crawler detected.');
 
 			return;
 		}
 
-		if (get_option('ip2location_redirection_noredirect_enabled')) {
-			if (isset($_GET['noredirect']) && trim($_GET['noredirect']) == 'true') {
+		if ($this->get_option('noredirect_enabled')) {
+			if ($this->get('noredirect') === 'true') {
 				$this->write_debug_log('"noredirect" parameter is found.');
 
 				return;
 			}
 		}
 
-		if (get_option('ip2location_redirection_first_redirect')) {
+		if ($this->get_option('first_redirect')) {
 			if (isset($_COOKIE['ip2location_redirection_first_visit']) && strpos($_COOKIE['ip2location_redirection_first_visit'], ';') !== false) {
 				list($time, $hash) = explode(';', $_COOKIE['ip2location_redirection_first_visit']);
 
@@ -1793,8 +1770,8 @@ class IP2LocationRedirection
 
 		setcookie('ip2location_redirection_first_visit', $time . ';' . md5($time . 'a09f0749-6683-5ada-882c-eb3263a252d3'), strtotime('+24 hours'), '/', '', true, true);
 
-		if (($rules = json_decode(get_option('ip2location_redirection_rules'))) !== null) {
-			$result = $this->get_location($this->get_ip());
+		if (($rules = json_decode($this->get_option('rules'))) !== null) {
+			$result = $this->get_location($this->ip());
 
 			if (empty($result['country_code'])) {
 				$this->write_debug_log('Cannot identify location.', 'ERROR');
@@ -1884,7 +1861,7 @@ class IP2LocationRedirection
 						}
 					}
 
-					if (get_option('ip2location_redirection_ignore_query_string') && strpos($this->get_current_url(), '?') !== false) {
+					if ($this->get_option('ignore_query_string') && strpos($this->get_current_url(), '?') !== false) {
 						// Remove query string
 						$current_url = trim(substr($this->get_current_url(), 0, strpos($this->get_current_url(), '?')), '/');
 					} else {
@@ -2088,20 +2065,20 @@ class IP2LocationRedirection
 
 	public function write_debug_log($message, $action = 'ABORTED')
 	{
-		if (!get_option('ip2location_redirection_debug_log_enabled')) {
+		if (!$this->get_option('debug_log_enabled')) {
 			return;
 		}
 
 		error_log(json_encode([
 			'time'      => gmdate('Y-m-d H:i:s'),
-			'client_ip' => $this->get_ip(),
+			'client_ip' => $this->ip(),
 			'location'  => $this->session['location'],
 			'lookup_by' => $this->session['lookup_mode'],
 			'cache'     => $this->session['cache'],
 			'uri'       => $this->get_current_url(),
 			'message'   => $message,
 			'action'    => $action,
-		]) . "\n", 3, IPLR_ROOT . $this->debug_log);
+		]) . "\n", 3, IP2LOCATION_DIR . $this->debug_log);
 	}
 
 	public function admin_footer_text($footer_text)
@@ -2160,7 +2137,7 @@ class IP2LocationRedirection
 						<div style="clear:both"></div>
 					</p>
 
-					<input type="hidden" id="ip2location-redirection-submit-feedback-nonce" value="' . wp_create_nonce('submit-feedback') . '">
+					<input type="hidden" id="ip2location-redirection-submit-feedback-nonce" value="' . wp_create_nonce('submit_feedback') . '">
 				</div>
 			</div>';
 		}
@@ -2172,6 +2149,62 @@ class IP2LocationRedirection
 	{
 		$this->cache_clear();
 		$this->set_priority();
+	}
+
+	private function wpdb_query($query, ...$args)
+	{
+		if (count(func_get_args()) > 1) {
+			return $GLOBALS['wpdb']->query($GLOBALS['wpdb']->prepare($query, ...$args));
+		}
+
+		return $GLOBALS['wpdb']->query($query);
+	}
+
+	private function wpdb_get_value($query, ...$args)
+	{
+		if (count(func_get_args()) > 1) {
+			return $GLOBALS['wpdb']->get_var($GLOBALS['wpdb']->prepare($query, ...$args));
+		}
+
+		return $GLOBALS['wpdb']->get_var($query);
+	}
+
+	private function wpdb_get_results($query, ...$args)
+	{
+		if (count(func_get_args()) > 1) {
+			return $GLOBALS['wpdb']->get_results($GLOBALS['wpdb']->prepare($query, ...$args));
+		}
+
+		return $GLOBALS['wpdb']->get_results($query);
+	}
+
+	private function post($key, $default = '', $checkbox = false)
+	{
+		return (isset($_POST[$key])) ? ((is_array($_POST[$key])) ? $this->sanitize_array($_POST[$key]) : sanitize_text_field($_POST[$key])) : $default;
+	}
+
+	private function get($key, $default = '', $checkbox = false)
+	{
+		return (isset($_GET[$key])) ? ((is_array($_GET[$key])) ? $this->sanitize_array($_GET[$key]) : sanitize_text_field($_GET[$key])) : $default;
+	}
+
+	private function is_checked($key, $default = 0)
+	{
+		return ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST[$key])) ? 0 : ((isset($_POST[$key])) ? 1 : (int) $default);
+	}
+
+	private function update_option($key, $value)
+	{
+		if (!in_array($key, $this->allowed_options)) {
+			return false;
+		}
+
+		return update_option('ip2location_redirection_' . $key, $value);
+	}
+
+	private function get_option($key)
+	{
+		return get_option('ip2location_redirection_' . $key);
 	}
 
 	private function cache_plugin_detected()
@@ -2212,23 +2245,6 @@ class IP2LocationRedirection
 				array_splice($active_plugins, $this_plugin_key, 1);
 				array_unshift($active_plugins, $this_plugin);
 				update_option('active_plugins', $active_plugins);
-			}
-		}
-	}
-
-	private function sanitize_post_inputs()
-	{
-		if (isset($_POST) && is_array($_POST)) {
-			foreach ($_POST as $key => $values) {
-				if (is_array($values)) {
-					foreach ($values as $index => $value) {
-						$values[$index] = strip_tags($value);
-					}
-
-					$_POST[$key] = $values;
-				} else {
-					$_POST[$key] = strip_tags($values);
-				}
 			}
 		}
 	}
@@ -2283,22 +2299,22 @@ class IP2LocationRedirection
 
 	private function is_bot()
 	{
-		if (preg_match('/baidu|bingbot|facebookexternalhit|googlebot|-google|ia_archiver|msnbot|naverbot|pingdom|seznambot|slurp|teoma|twitter|yandex|yeti|linkedinbot|pinterest/i', $this->get_user_agent())) {
+		if (preg_match('/baidu|bingbot|facebookexternalhit|googlebot|-google|ia_archiver|msnbot|naverbot|pingdom|seznambot|slurp|teoma|twitter|yandex|yeti|linkedinbot|pinterest/i', $this->user_agent())) {
 			return true;
 		}
 
 		return false;
 	}
 
-	private function get_user_agent()
+	private function user_agent()
 	{
-		return (isset($_SERVER['HTTP_USER_AGENT'])) ? $_SERVER['HTTP_USER_AGENT'] : null;
+		return $_SERVER['HTTP_USER_AGENT'] ?? '';
 	}
 
-	private function get_ip()
+	private function ip()
 	{
-		if (get_option('ip2location_redirection_real_ip_header')) {
-			return $_SERVER[get_option('ip2location_redirection_real_ip_header')] ?? $_SERVER['REMOTE_ADDR'];
+		if ($this->get_option('real_ip_header')) {
+			return $_SERVER[$this->get_option('real_ip_header')] ?? $_SERVER['REMOTE_ADDR'];
 		}
 
 		// Possible using CloudFlare service
@@ -2440,13 +2456,13 @@ class IP2LocationRedirection
 			];
 		}
 
-		switch (get_option('ip2location_redirection_lookup_mode')) {
+		switch ($this->get_option('lookup_mode')) {
 			// IP2Location Web Service
 			case 'ws':
 				$this->session['lookup_mode'] = 'WS';
 
 				$response = wp_remote_get('https://api.ip2location.io/?' . http_build_query([
-					'key'            => get_option('ip2location_redirection_api_key'),
+					'key'            => $this->get_option('api_key'),
 					'ip'             => $ip,
 					'source'         => 'wp-redirection',
 					'source_version' => '1.26.7',
@@ -2456,9 +2472,9 @@ class IP2LocationRedirection
 
 				if (isset($json->error)) {
 					$response = wp_remote_get('https://api.ip2location.com/v2/?' . http_build_query([
-						'key'     => get_option('ip2location_redirection_api_key'),
+						'key'     => $this->get_option('api_key'),
 						'ip'      => $ip,
-						'package' => (get_option('ip2location_redirection_enable_region_redirect')) ? 'WS3' : 'WS1',
+						'package' => ($this->get_option('enable_region_redirect')) ? 'WS3' : 'WS1',
 					]));
 
 					$json = json_decode($response['body']);
@@ -2510,7 +2526,7 @@ class IP2LocationRedirection
 				$this->session['lookup_mode'] = 'BIN';
 
 				// Make sure IP2Location database is exist.
-				if (!is_file(IP2LOCATION_DIR . get_option('ip2location_redirection_database'))) {
+				if (!is_file(IP2LOCATION_DIR . $this->get_option('database'))) {
 					$this->write_debug_log('Database not found.', 'ERROR');
 
 					return [
@@ -2522,7 +2538,7 @@ class IP2LocationRedirection
 				}
 
 				// Create IP2Location object.
-				$db = new \IP2Location\Database(IP2LOCATION_DIR . get_option('ip2location_redirection_database'), \IP2Location\Database::FILE_IO);
+				$db = new \IP2Location\Database(IP2LOCATION_DIR . $this->get_option('database'), \IP2Location\Database::FILE_IO);
 
 				// Get geolocation by IP address.
 				$response = $db->lookup($ip, \IP2Location\Database::ALL);
@@ -2787,11 +2803,11 @@ class IP2LocationRedirection
 
 	private function is_setup_completed()
 	{
-		if (get_option('ip2location_redirection_lookup_mode') == 'ws' && get_option('ip2location_redirection_api_key')) {
+		if ($this->get_option('lookup_mode') == 'ws' && $this->get_option('api_key')) {
 			return true;
 		}
 
-		if (get_option('ip2location_redirection_lookup_mode') == 'bin' && is_file(IP2LOCATION_DIR . get_option('ip2location_redirection_database'))) {
+		if ($this->get_option('lookup_mode') == 'bin' && is_file(IP2LOCATION_DIR . $this->get_option('database'))) {
 			return true;
 		}
 
@@ -2800,26 +2816,26 @@ class IP2LocationRedirection
 
 	private function get_database_date()
 	{
-		if (!is_file(IP2LOCATION_DIR . get_option('ip2location_redirection_database'))) {
+		if (!is_file(IP2LOCATION_DIR . $this->get_option('database'))) {
 			return;
 		}
 
-		$obj = new \IP2Location\Database(IP2LOCATION_DIR . get_option('ip2location_redirection_database'), \IP2Location\Database::FILE_IO);
+		$obj = new \IP2Location\Database(IP2LOCATION_DIR . $this->get_option('database'), \IP2Location\Database::FILE_IO);
 
 		return date('Y-m-d', strtotime(str_replace('.', '-', $obj->getDatabaseVersion())));
 	}
 
 	private function is_region_supported()
 	{
-		if (get_option('ip2location_redirection_lookup_mode') == 'ws' && get_option('ip2location_redirection_api_key')) {
+		if ($this->get_option('lookup_mode') == 'ws' && $this->get_option('api_key')) {
 			return true;
 		}
 
-		if (!is_file(IP2LOCATION_DIR . get_option('ip2location_redirection_database'))) {
+		if (!is_file(IP2LOCATION_DIR . $this->get_option('database'))) {
 			return null;
 		}
 
-		$obj = new \IP2Location\Database(IP2LOCATION_DIR . get_option('ip2location_redirection_database'), \IP2Location\Database::FILE_IO);
+		$obj = new \IP2Location\Database(IP2LOCATION_DIR . $this->get_option('database'), \IP2Location\Database::FILE_IO);
 
 		$result = $obj->lookup('8.8.8.8', \IP2Location\Database::ALL);
 
@@ -2920,19 +2936,25 @@ class IP2LocationRedirection
 			$post_name = substr($post_name, strrpos($post_name, '/') + 1);
 		}
 
-		$results = $GLOBALS['wpdb']->get_results($GLOBALS['wpdb']->prepare("SELECT * FROM {$GLOBALS['wpdb']->prefix}posts WHERE post_name = %s", [$post_name]));
+		$results = $this->wpdb_get_results("SELECT * FROM {$GLOBALS['wpdb']->prefix}posts WHERE post_name = %s", [
+			$post_name
+		]);
 
 		return ($results) ? $results[0]->ID : null;
 	}
 
 	private function get_post_title($post_id)
 	{
-		return $GLOBALS['wpdb']->get_var("SELECT `post_title` FROM {$GLOBALS['wpdb']->prefix}posts WHERE `ID` = '$post_id'");
+		return $this->wpdb_get_value("SELECT `post_title` FROM {$GLOBALS['wpdb']->prefix}posts WHERE `ID` = %d", [
+			$post_id
+		]);
 	}
 
 	private function get_permalink($page_id)
 	{
-		$results = $GLOBALS['wpdb']->get_results($GLOBALS['wpdb']->prepare("SELECT * FROM {$GLOBALS['wpdb']->prefix}posts WHERE ID = %d", [$page_id]));
+		$results = $this->wpdb_get_results("SELECT * FROM {$GLOBALS['wpdb']->prefix}posts WHERE ID = %d", [
+			$page_id
+		]);
 
 		if ($results) {
 			if (preg_match('/page_id=[0-9]+$/', $results[0]->guid)) {
@@ -2943,5 +2965,60 @@ class IP2LocationRedirection
 		}
 
 		return null;
+	}
+
+	private function sanitize_array($array)
+	{
+		if (is_string($array)) {
+			return sanitize_text_field($array);
+		}
+		foreach ($array as $key => $value) {
+			if (is_array($value)) {
+				$array[$key] = $this->sanitize_array($value);
+			} else {
+				$array[$key] = sanitize_text_field($value);
+			}
+		}
+
+		return $array;
+	}
+
+	private function sanitize_list($list)
+	{
+		if (strpos($list, ';') === false && !filter_var(str_replace('*', '0', $list), \FILTER_VALIDATE_IP, \FILTER_FLAG_NO_PRIV_RANGE | \FILTER_FLAG_NO_RES_RANGE)) {
+			return;
+		}
+
+		$items = [];
+		$parts = explode(';', $list);
+
+		sort($parts);
+
+		foreach ($parts as $part) {
+			if (strpos($part, '/') !== false) {
+				list($ip, $range) = explode('/', $part);
+
+				// Skip invalid IP address
+				if (!filter_var($ip, \FILTER_VALIDATE_IP)) {
+					continue;
+				}
+
+				// Invalid IPv4 range
+				if (filter_var($ip, \FILTER_VALIDATE_IP, \FILTER_FLAG_IPV4) && ((int) $range < 1 || (int) $range > 32)) {
+					continue;
+				}
+
+				// Invalid IPv6 range
+				if (filter_var($ip, \FILTER_VALIDATE_IP, \FILTER_FLAG_IPV6) && ((int) $range < 1 || (int) $range > 128)) {
+					continue;
+				}
+			} elseif (!filter_var(str_replace('*', '0', $part), \FILTER_VALIDATE_IP)) {
+				continue;
+			}
+
+			$items[] = $part;
+		}
+
+		return implode(';', $items);
 	}
 }

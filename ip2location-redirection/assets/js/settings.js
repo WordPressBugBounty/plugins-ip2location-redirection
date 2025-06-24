@@ -55,7 +55,7 @@ jQuery(document).ready(function ($) {
 		$('#form_download_backup').submit();
 	});
 
-	$('#file-restore').uploadFile({
+	$('#restore_file').uploadFile({
 		url: ajaxurl,
 		formData: {
 			action: 'ip2location_redirection_restore',
@@ -64,9 +64,9 @@ jQuery(document).ready(function ($) {
 		multiple: false,
 		dragDrop: true,
 		maxFileCount: 1,
-		fileName: 'file-restore',
-		acceptFiles:'.json',
-		onSuccess:function(files, data, xhr, pd) {
+		fileName: 'restore_file',
+		acceptFiles: '.json',
+		onSuccess: function (files, data, xhr, pd) {
 			if (data.status != 'OK') {
 				alert(data.message);
 				return;
