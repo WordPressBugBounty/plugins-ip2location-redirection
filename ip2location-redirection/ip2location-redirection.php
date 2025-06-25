@@ -3,7 +3,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.34.0
+ * Version: 1.34.1
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -1335,7 +1335,7 @@ class IP2LocationRedirection
 		$download_token = $this->post('download_token', $this->get_option('token'));
 		$enable_region_redirection = $this->is_checked('enable_region_redirection', $this->get_option('enable_region_redirect'));
 		$download_ipv4_only = $this->is_checked('download_ipv4_only', $this->get_option('download_ipv4_only'));
-		$enable_debug_log = $this->post('enabled_debug_log', $this->get_option('debug_log_enabled'));
+		$enable_debug_log = $this->is_checked('enable_debug_log', $this->get_option('debug_log_enabled'));
 		$real_ip_header = $this->post('real_ip_header', $this->get_option('real_ip_header'));
 
 		if (!in_array($real_ip_header, array_values($real_ip_headers))) {
@@ -1422,6 +1422,8 @@ class IP2LocationRedirection
 				$this->update_option('debug_log_enabled', $enable_debug_log);
 				$this->update_option('download_ipv4_only', $download_ipv4_only);
 				$this->update_option('real_ip_header', $real_ip_header);
+
+				var_dump($enable_debug_log);
 
 				$settings_status .= '
 				<div id="message" class="updated">
@@ -1683,17 +1685,19 @@ class IP2LocationRedirection
 	public function redirect()
 	{
 		// Disable redirection on admin pages
-		if (is_admin()) {
+		if (is_admin() && $this->get_option('skip_admins')) {
+			$this->write_debug_log('Redirection skipped for administrators.');
+			return;
+		}
+
+		// Disable redirection on administrator session
+		if (current_user_can('administrator') && $this->get_option('skip_admins')) {
+			$this->write_debug_log('Redirection skipped for administrators.');
 			return;
 		}
 
 		// Disable redirection on admin pages
 		if (substr($_SERVER['REQUEST_URI'], 0, 9) == '/wp-login' || substr($_SERVER['REQUEST_URI'], 0, 9) == '/wp-admin') {
-			return;
-		}
-
-		// Disable redirection on administrator session
-		if (current_user_can('administrator')) {
 			return;
 		}
 
