@@ -3,7 +3,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.34.1
+ * Version: 1.34.2
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -1849,18 +1849,18 @@ class IP2LocationRedirection
 					if ($page_from == 'domain') {
 						// Keep query string
 						if (substr($url_from, 0, 1) == '*') {
-							if (substr($url_from, 1) == $_SERVER['HTTP_HOST']) {
-								$this->write_debug_log('Domain "' . $url_from . '" matched "' . $_SERVER['HTTP_HOST'] . '".', 'MATCHED');
+							if (substr($url_from, 1) == $this->http_host()) {
+								$this->write_debug_log('Domain "' . $url_from . '" matched "' . $this->http_host() . '".', 'MATCHED');
 								$this->redirect_to(str_replace(substr($url_from, 1), $url_to . ((!empty($new_parameter) ? (((strpos($url_to, '?') === false) ? '?' : '&') . $new_parameter) : '')), $this->get_current_url()), $http_code);
 							} else {
-								$this->write_debug_log('Domain "' . $url_from . '" not match "' . $_SERVER['HTTP_HOST'] . '".');
+								$this->write_debug_log('Domain "' . $url_from . '" not match "' . $this->http_host() . '".');
 							}
 						} else {
-							if ($url_from == $_SERVER['HTTP_HOST']) {
-								$this->write_debug_log('Domain "' . $url_from . '" matched "' . $_SERVER['HTTP_HOST'] . '".', 'MATCHED');
+							if ($url_from == $this->http_host()) {
+								$this->write_debug_log('Domain "' . $url_from . '" matched "' . $this->http_host() . '".', 'MATCHED');
 								$this->redirect_to(str_replace($url_from, $url_to . ((!empty($new_parameter) ? ('?' . $new_parameter) : '')), $this->get_current_url(false)), $http_code);
 							} else {
-								$this->write_debug_log('Domain "' . $url_from . '" not match "' . $_SERVER['HTTP_HOST'] . '".');
+								$this->write_debug_log('Domain "' . $url_from . '" not match "' . $this->http_host() . '".');
 							}
 						}
 					}
@@ -2415,7 +2415,11 @@ class IP2LocationRedirection
 
 	private function get_current_url($add_query = true)
 	{
-		$current_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+		if (empty($this->http_host())) {
+			return '';
+		}
+
+		$current_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == 'on' ? 'https' : 'http') . '://' . $this->http_host() . $_SERVER['REQUEST_URI'];
 
 		$parts = parse_url($current_url);
 
@@ -3024,5 +3028,10 @@ class IP2LocationRedirection
 		}
 
 		return implode(';', $items);
+	}
+
+	private function http_host()
+	{
+		return $_SERVER['HTTP_HOST'] ?? '';
 	}
 }
