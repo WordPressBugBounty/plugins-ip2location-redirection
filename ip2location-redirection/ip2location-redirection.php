@@ -3,7 +3,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.34.2
+ * Version: 1.34.3
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -888,6 +888,14 @@ class IP2LocationRedirection
 							<label for="ignore_query_string">
 								<input type="checkbox" name="ignore_query_string" id="ignore_query_string"' . (($ignore_query_string) ? ' checked' : '') . '>
 								' . __('Ignore query strings and parameters when matching page.', 'ip2location-redirection') . '
+							</label>
+						</td>
+					</tr>
+					<tr>
+						<td>
+							<label for="skip_bots">
+								<input type="checkbox" name="skip_bots" id="skip_bots"' . (($skip_bots) ? ' checked' : '') . '>
+								' . __('Do not redirect bots and crawlers.', 'ip2location-redirection') . '
 							</label>
 						</td>
 					</tr>
