@@ -75,4 +75,14 @@ jQuery(document).ready(function ($) {
 			window.location.href = window.location.href;
 		},
 	});
+
+	$('#btn_clear_cache').on('click', function (e) {
+		e.preventDefault();
+
+		var $form = $('<form method="post">')
+			.html('<input type="hidden" name="cache_nonce" value="' + $('#cache_nonce').val() + '">');
+
+		$('body').append($form);
+		$form.submit();
+	});
 });
