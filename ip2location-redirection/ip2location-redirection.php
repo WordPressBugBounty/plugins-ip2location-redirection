@@ -1,9 +1,10 @@
 <?php
+
 /**
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.35.0
+ * Version: 1.38.0
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -40,6 +41,7 @@ add_action('admin_notices', [$ip2location_redirection, 'show_notice']);
 add_action('wp_footer', [$ip2location_redirection, 'footer']);
 add_action('admin_footer_text', [$ip2location_redirection, 'admin_footer_text']);
 add_action('ip2location_redirection_hourly_event', [$ip2location_redirection, 'hourly_event']);
+add_action('ip2location_redirection_daily_event', [$ip2location_redirection, 'daily_event']);
 
 class IP2LocationRedirection
 {
@@ -50,7 +52,7 @@ class IP2LocationRedirection
 	];
 
 	private $allowed_options = [
-		'api_key', 'database', 'debug_log_enabled', 'download_ipv4_only', 'enable_region_redirect', 'enabled', 'first_redirect', 'ignore_query_string', 'ip_whitelist', 'lookup_mode', 'noredirect_enabled', 'private_key', 'real_ip_header', 'rules', 'session_message', 'skip_admins', 'skip_bots', 'token'
+		'api_key', 'auto_update', 'database', 'debug_log_enabled', 'download_ipv4_only', 'enable_region_redirect', 'enabled', 'first_redirect', 'ignore_query_string', 'ip_whitelist', 'lookup_mode', 'noredirect_enabled', 'private_key', 'real_ip_header', 'rules', 'session_message', 'skip_admins', 'skip_bots', 'token'
 	];
 
 	private $debug_log = '';
@@ -240,6 +242,10 @@ class IP2LocationRedirection
 		if (!wp_next_scheduled('ip2location_redirection_hourly_event')) {
 			wp_schedule_event(time(), 'hourly', 'ip2location_redirection_hourly_event');
 		}
+
+		if (!wp_next_scheduled('ip2location_redirection_daily_event')) {
+			wp_schedule_event(time(), 'daily', 'ip2location_redirection_daily_event');
+		}
 	}
 
 	public function update_ip2location_database()
@@ -257,153 +263,12 @@ class IP2LocationRedirection
 			]));
 		}
 
-		require_once ABSPATH . 'wp-admin/includes/file.php';
-		WP_Filesystem();
-		global $wp_filesystem;
-
 		try {
 			$token = $this->post('token');
 			$enable_region = $this->is_checked('enable_region');
-			$ipv4_only = $this->is_checked('ipv4_only');
+			$ipv4_only = $this->post('ipv4_only') === 'true';
 
-			$ipv6 = ($ipv4_only) ? '' : 'IPV6';
-
-			if ($enable_region) {
-				$code = 'DB3BIN' . $ipv6;
-			} else {
-				$code = 'DB1BIN' . $ipv6;
-			}
-
-			$working_dir = IP2LOCATION_DIR . 'working' . \DIRECTORY_SEPARATOR;
-			$zip_file = $working_dir . 'database.zip';
-
-			// Remove existing working directory
-			$wp_filesystem->delete($working_dir, true);
-
-			// Create working directory
-			$wp_filesystem->mkdir($working_dir);
-
-			if (!class_exists('WP_Http')) {
-				include_once ABSPATH . WPINC . '/class-http.php';
-			}
-
-			$request = new WP_Http();
-
-			// Check download permission
-			$response = $request->request('https://www.ip2location.com/download-info?' . http_build_query([
-				'package' => $code,
-				'token'   => $token,
-				'source'  => 'wp_redirection',
-			]));
-
-			$parts = explode(';', $response['body']);
-
-			if ($parts[0] != 'OK') {
-				// Download LITE version
-				if ($enable_region) {
-					$code = 'DB3LITEBIN' . $ipv6;
-				} else {
-					$code = 'DB1LITEBIN' . $ipv6;
-				}
-
-				$response = $request->request('https://www.ip2location.com/download-info?' . http_build_query([
-					'package' => $code,
-					'token'   => $token,
-					'source'  => 'wp_redirection',
-				]));
-
-				$parts = explode(';', $response['body']);
-
-				if ($parts[0] != 'OK') {
-					exit(json_encode([
-						'status'  => 'ERROR',
-						'message' => __('You do not have permission to download this database.', 'ip2location-redirection'),
-					]));
-				}
-			}
-
-			// Start downloading BIN database from IP2Location website
-			$response = $request->request('https://www.ip2location.com/download?' . http_build_query([
-				'file'   => $code,
-				'token'  => $token,
-				'source' => 'wp_redirection',
-			]), [
-				'timeout'          => 300,
-				'follow_redirects' => true,
-			]);
-
-			if ((isset($response->errors)) || (!in_array('200', $response['response']))) {
-				$wp_filesystem->delete($working_dir, true);
-
-				exit(json_encode([
-					'status'  => 'ERROR',
-					'message' => __('Connection timed out while downloading database.', 'ip2location-redirection'),
-				]));
-			}
-
-			// Save downloaded package.
-			$fp = fopen($zip_file, 'w');
-
-			if (!$fp) {
-				exit(json_encode([
-					'status'  => 'ERROR',
-					'message' => __('No permission to write into file system.', 'ip2location-redirection'),
-				]));
-			}
-
-			fwrite($fp, $response['body']);
-			fclose($fp);
-
-			if (filesize($zip_file) < 51200) {
-				$message = file_get_contents($zip_file);
-				$wp_filesystem->delete($working_dir, true);
-
-				exit(json_encode([
-					'status'  => 'ERROR',
-					'message' => __('Downloaded database is corrupted. Please try again later.', 'ip2location-redirection'),
-				]));
-			}
-
-			// Unzip the package to working directory
-			$result = unzip_file($zip_file, $working_dir);
-
-			// Once extracted, delete the package.
-			unlink($zip_file);
-
-			if (is_wp_error($result)) {
-				$wp_filesystem->delete($working_dir, true);
-
-				exit(json_encode([
-					'status'  => 'ERROR',
-					'message' => __('There is problem when decompress the database.', 'ip2location-redirection'),
-				]));
-			}
-
-			// File the BIN database
-			$bin_database = '';
-			$files = scandir($working_dir);
-
-			foreach ($files as $file) {
-				if (strtoupper(substr($file, -4)) == '.BIN') {
-					$bin_database = $file;
-					break;
-				}
-			}
-
-			// Move file to IP2Location directory
-			$wp_filesystem->move($working_dir . $bin_database, IP2LOCATION_DIR . $bin_database, true);
-
-			$this->update_option('lookup_mode', 'bin');
-			$this->update_option('database', $bin_database);
-			$this->update_option('token', $token);
-			$this->update_option('download_ipv4_only', ($ipv4_only) ? 1 : 0);
-			$this->update_option('enable_region_redirect', ($enable_region) ? 1 : 0);
-
-			// Remove working directory
-			$wp_filesystem->delete($working_dir, true);
-
-			// Flush caches
-			$this->cache_flush();
+			$this->perform_database_update($token, $enable_region, $ipv4_only);
 
 			exit(json_encode([
 				'status'  => 'OK',
@@ -415,6 +280,137 @@ class IP2LocationRedirection
 				'message' => $e->getMessage(),
 			]));
 		}
+	}
+
+	private function perform_database_update($token, $enable_region, $ipv4_only)
+	{
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		WP_Filesystem();
+		global $wp_filesystem;
+
+		$ipv6 = ($ipv4_only) ? '' : 'IPV6';
+
+		if ($enable_region) {
+			$code = 'DB3BIN' . $ipv6;
+		} else {
+			$code = 'DB1BIN' . $ipv6;
+		}
+
+		$working_dir = IP2LOCATION_DIR . 'working' . \DIRECTORY_SEPARATOR;
+		$zip_file = $working_dir . 'database.zip';
+
+		// Remove existing working directory
+		$wp_filesystem->delete($working_dir, true);
+
+		// Create working directory
+		$wp_filesystem->mkdir($working_dir);
+
+		if (!class_exists('WP_Http')) {
+			include_once ABSPATH . WPINC . '/class-http.php';
+		}
+
+		$request = new WP_Http();
+
+		// Check download permission
+		$response = $request->request('https://www.ip2location.com/download-info?' . http_build_query([
+			'package' => $code,
+			'token'   => $token,
+			'source'  => 'wp_redirection',
+		]));
+
+		$parts = explode(';', $response['body']);
+
+		if ($parts[0] != 'OK') {
+			// Download LITE version
+			if ($enable_region) {
+				$code = 'DB3LITEBIN' . $ipv6;
+			} else {
+				$code = 'DB1LITEBIN' . $ipv6;
+			}
+
+			$response = $request->request('https://www.ip2location.com/download-info?' . http_build_query([
+				'package' => $code,
+				'token'   => $token,
+				'source'  => 'wp_redirection',
+			]));
+
+			$parts = explode(';', $response['body']);
+
+			if ($parts[0] != 'OK') {
+				throw new Exception(__('You do not have permission to download this database.', 'ip2location-redirection'));
+			}
+		}
+
+		// Start downloading BIN database from IP2Location website
+		$response = $request->request('https://www.ip2location.com/download?' . http_build_query([
+			'file'   => $code,
+			'token'  => $token,
+			'source' => 'wp_redirection',
+		]), [
+			'timeout'          => 300,
+			'follow_redirects' => true,
+		]);
+
+		if ((isset($response->errors)) || (!in_array('200', $response['response']))) {
+			$wp_filesystem->delete($working_dir, true);
+
+			throw new Exception(__('Connection timed out while downloading database.', 'ip2location-redirection'));
+		}
+
+		// Save downloaded package.
+		$fp = fopen($zip_file, 'w');
+
+		if (!$fp) {
+			throw new Exception(__('No permission to write into file system.', 'ip2location-redirection'));
+		}
+
+		fwrite($fp, $response['body']);
+		fclose($fp);
+
+		if (filesize($zip_file) < 51200) {
+			$message = file_get_contents($zip_file);
+			$wp_filesystem->delete($working_dir, true);
+
+			throw new Exception(__('Downloaded database is corrupted. Please try again later.', 'ip2location-redirection'));
+		}
+
+		// Unzip the package to working directory
+		$result = unzip_file($zip_file, $working_dir);
+
+		// Once extracted, delete the package.
+		unlink($zip_file);
+
+		if (is_wp_error($result)) {
+			$wp_filesystem->delete($working_dir, true);
+
+			throw new Exception(__('There is problem when decompress the database.', 'ip2location-redirection'));
+		}
+
+		// File the BIN database
+		$bin_database = '';
+		$files = scandir($working_dir);
+
+		foreach ($files as $file) {
+			if (strtoupper(substr($file, -4)) == '.BIN') {
+				$bin_database = $file;
+				break;
+			}
+		}
+
+		// Move file to IP2Location directory
+		$wp_filesystem->move($working_dir . $bin_database, IP2LOCATION_DIR . $bin_database, true);
+
+		$this->update_option('lookup_mode', 'bin');
+		$this->update_option('database', $bin_database);
+		$this->update_option('token', $token);
+		$this->update_option('download_ipv4_only', ($ipv4_only) ? 1 : 0);
+		$this->update_option('enable_region_redirect', ($enable_region) ? 1 : 0);
+
+		// Remove working directory
+		$wp_filesystem->delete($working_dir, true);
+
+		// Flush caches
+		$this->cache_flush();
 	}
 
 	public function validate_token()
@@ -645,10 +641,15 @@ class IP2LocationRedirection
 					$post_to = $this->post('post_to')[$index] ?? '';
 					$url_from = $this->post('url_from')[$index] ?? '';
 					$url_to = $this->post('url_to')[$index] ?? '';
+					$path_mode = $this->post('path_mode')[$index] ?? '';
+					$path_keyword = $this->post('path_keyword')[$index] ?? '';
 					$new_parameter = $this->post('new_parameter')[$index] ?? '';
 					$domain_from = $this->post('domain_from')[$index] ?? '';
 					$domain_to = $this->post('domain_to')[$index] ?? '';
 					$keep_query = $this->post('keep_query')[$index] ?? '';
+					$dialog_message = $this->post('dialog_message')[$index] ?? '';
+					$total_hits = $this->post('total_hits')[$index] ?? 0;
+					$last_access = $this->post('last_access')[$index] ?? '';
 
 					// Domain redirection must redirect from domain to domain
 					if (($from == 'domain' && $to != 'domain') || $to == 'domain' && $from != 'domain') {
@@ -784,16 +785,23 @@ class IP2LocationRedirection
 						}
 					}
 
+					$dialog_message = ($status_code != 'dialog') ? '' : $dialog_message;
+
 					$rules[] = [
-						'is_active'     => ($rule_status == '1'),
-						'country_codes' => $country_codes,
-						'page_from'     => ($from == 'post') ? $post_from : $from,
-						'page_to'       => ($to == 'post') ? $post_to : $to,
-						'url_from'      => $url_from,
-						'url_to'        => $url_to,
-						'new_parameter' => $new_parameter,
-						'language_code' => $wpml_code,
-						'http_code'     => $status_code,
+						'is_active'      => ($rule_status == '1'),
+						'country_codes'  => $country_codes,
+						'page_from'      => ($from == 'post') ? $post_from : $from,
+						'page_to'        => ($to == 'post') ? $post_to : $to,
+						'url_from'       => $url_from,
+						'url_to'         => $url_to,
+						'path_mode'      => $path_mode,
+						'path_keyword'   => $path_keyword,
+						'new_parameter'  => $new_parameter,
+						'language_code'  => $wpml_code,
+						'http_code'      => $status_code,
+						'dialog_message' => $dialog_message,
+						'total_hits'     => $total_hits,
+						'last_access'    => $last_access,
 					];
 
 					++$index;
@@ -981,7 +989,7 @@ class IP2LocationRedirection
 			}
 		}
 
-		$rules = json_decode($this->get_option('rules'));
+		$rules = json_decode((string) $this->get_option('rules'));
 
 		if ($rules) {
 			for ($i = 0; $i < count($rules); ++$i) {
@@ -999,6 +1007,14 @@ class IP2LocationRedirection
 
 				if (substr($rules[$i]->page_to, 0, 4) == 'post') {
 					$rules[$i]->page_to .= ';Post → ' . $this->get_post_title(substr($rules[$i]->page_to, 5));
+				}
+
+				if (!isset($rules[$i]->total_hits)) {
+					$rules[$i]->total_hits = 0;
+				}
+
+				if (!isset($rules[$i]->last_access)) {
+					$rules[$i]->last_access = null;
 				}
 			}
 		}
@@ -1345,6 +1361,7 @@ class IP2LocationRedirection
 		$download_ipv4_only = $this->is_checked('download_ipv4_only', $this->get_option('download_ipv4_only'));
 		$enable_debug_log = $this->is_checked('enable_debug_log', $this->get_option('debug_log_enabled'));
 		$real_ip_header = $this->post('real_ip_header', $this->get_option('real_ip_header'));
+		$enable_auto_update = $this->is_checked('enable_auto_update', $this->get_option('auto_update'));
 
 		if (!in_array($real_ip_header, array_values($real_ip_headers))) {
 			$real_ip_header = '';
@@ -1441,6 +1458,7 @@ class IP2LocationRedirection
 				$this->update_option('debug_log_enabled', $enable_debug_log);
 				$this->update_option('download_ipv4_only', $download_ipv4_only);
 				$this->update_option('real_ip_header', $real_ip_header);
+				$this->update_option('auto_update', $enable_auto_update);
 
 				var_dump($enable_debug_log);
 
@@ -1549,6 +1567,18 @@ class IP2LocationRedirection
 									</tr>
 									<tr>
 										<td></td>
+										<td>
+											<label for="enable_auto_update">
+												<input type="checkbox" name="enable_auto_update" id="enable_auto_update" value="true"' . (($enable_auto_update) ? ' checked' : '') . (($disabled) ? ' disabled' : '') . '> ' . __('Enable auto update', 'ip2location-redirection') . '
+											</label>
+
+											<p class="description">
+												' . __('Enable automatic updates to keep the BIN database up to date.', 'ip2location-redirection') . '
+											</p>
+										</td>
+									</tr>
+									<tr>
+										<td></td>
 										<td id="update_status"><td>
 									</tr>
 									<tr>
@@ -1558,13 +1588,13 @@ class IP2LocationRedirection
 								</table>
 								</div>';
 
-								if (preg_match('/LITE/', $this->get_option('database'))) {
-									echo '
+		if (preg_match('/LITE/', $this->get_option('database'))) {
+			echo '
 									<p class="description">
 										' . sprintf(__('If you are looking for high accuracy result, you should consider using the commercial version of %1$sIP2Location BIN database%2$s.', 'ip2location-redirection'), '<a href="https://www.ip2location.com/database/db3-ip-country-region-city#wordpress-wzdir" target="_blank">', '</a>') . '
 									</p>';
-								}
-								echo '
+		}
+		echo '
 							</div>
 							<div id="api_web_service"' . (($lookup_mode == 'bin') ? ' style="display:none"' : '') . '>
 								<div class="iplr-panel">
@@ -1593,19 +1623,19 @@ class IP2LocationRedirection
 										<td>
 											<input name="api_key" type="text" id="api_key" value="' . esc_attr($api_key) . '" class="regular-text" />';
 
-											if ($legacyApi) {
-												echo ' <strong><i>(legacy API)</i></strong>';
-											}
+		if ($legacyApi) {
+			echo ' <strong><i>(legacy API)</i></strong>';
+		}
 
-											echo '
+		echo '
 											<p class="description">' . sprintf(__('Your IP2Location %1$sGeolocation%2$s API key.', 'ip2location-redirection'), '<a href="https://www.ip2location.io/pricing" target="_blank">', '</a>') . '</p>
 										</td>
 									</tr>';
 
-									if (!empty($api_key) && $legacyApi) {
-										if (!empty($json)) {
-											if (preg_match('/^[0-9]+$/', $json->response)) {
-												echo '
+		if (!empty($api_key) && $legacyApi) {
+			if (!empty($json)) {
+				if (preg_match('/^[0-9]+$/', $json->response)) {
+					echo '
 												<tr>
 													<th scope="row">
 														<label for="available_credit">' . __('Available Credit', 'ip2location-redirection') . '</label>
@@ -1614,11 +1644,11 @@ class IP2LocationRedirection
 														' . number_format($json->response, 0, '', ',') . '
 													</td>
 												</tr>';
-											}
-										}
-									}
+				}
+			}
+		}
 
-									echo '
+		echo '
 									</table>
 								</div>
 							</div>
@@ -1644,12 +1674,12 @@ class IP2LocationRedirection
 							<select name="real_ip_header" id="real_ip_header">
 								<option value=""' . ((empty($real_ip_header)) ? ' selected' : '') . '> No Override</option>';
 
-								foreach ($real_ip_headers as $value) {
-									echo '
+		foreach ($real_ip_headers as $value) {
+			echo '
 									<option value="' . $value . '"' . (($real_ip_header == $value) ? ' selected' : '') . '> ' . $value . '</option>';
-								}
+		}
 
-							echo '
+		echo '
 							</select>
 							<p class="description">
 								' . __('If your WordPress is installed behind a reverse proxy or load balancer, the real IP address of the visitors may not forwarded correctly and causing inaccurate country results. Use this option to override the IP detected by IP2Location.', 'ip2location-redirection') . '
@@ -1715,6 +1745,11 @@ class IP2LocationRedirection
 
 	public function redirect()
 	{
+		// Disable redirection for WP-CLI
+		if (defined('WP_CLI') && WP_CLI) {
+			return;
+		}
+
 		// Disable redirection on admin pages
 		if (is_admin() && $this->get_option('skip_admins')) {
 			$this->write_debug_log('Redirection skipped for administrators.');
@@ -1814,61 +1849,19 @@ class IP2LocationRedirection
 				return;
 			}
 
-			foreach ($rules as $rule) {
-				if (isset($rule->is_active)) {
-					$is_active = $rule->is_active;
-					$country_codes = $rule->country_codes;
-					$page_from = $rule->page_from;
-					$page_to = $rule->page_to;
-					$url_from = $rule->url_from;
-					$url_to = $rule->url_to;
-					$new_parameter = $rule->new_parameter ?? '';
-					$wpml_code = $rule->language_code;
-					$http_code = $rule->http_code;
-				} else {
-					// Legacy supports
-					if (count($rule) == 5) {
-						$is_active = true;
-						$country_codes = explode(';', $rule[0]);
-						$page_from = $rule[1];
-						$page_to = $rule[2];
-						$url_from = '';
-						$url_to = $rule[3];
-						$new_parameter = '';
-						$wpml_code = '';
-						$http_code = $rule[4];
-					} elseif (count($rule) == 7) {
-						$is_active = (bool) $rule[6];
-						$country_codes = explode(';', $rule[0]);
-						$page_from = $rule[1];
-						$page_to = $rule[2];
-						$url_from = $rule[3];
-						$url_to = $rule[4];
-						$new_parameter = '';
-						$wpml_code = '';
-						$http_code = $rule[5];
-					} elseif (count($rule) == 8) {
-						$is_active = (bool) $rule[7];
-						$country_codes = explode(';', $rule[0]);
-						$page_from = $rule[1];
-						$page_to = $rule[2];
-						$url_from = $rule[3];
-						$url_to = $rule[4];
-						$new_parameter = '';
-						$wpml_code = $rule[5];
-						$http_code = $rule[6];
-					} elseif (count($rule) == 9) {
-						$is_active = (bool) $rule[8];
-						$country_codes = explode(';', $rule[0]);
-						$page_from = $rule[1];
-						$page_to = $rule[2];
-						$url_from = $rule[3];
-						$url_to = $rule[4];
-						$new_parameter = $rules[5];
-						$wpml_code = $rule[6];
-						$http_code = $rule[7];
-					}
-				}
+			for ($i = 0; $i < count($rules); $i++) {
+				$is_active = (bool) $rules[$i]->is_active ?? false;
+				$country_codes = $rules[$i]->country_codes ?? [];
+				$page_from = $rules[$i]->page_from ?? '';
+				$page_to = $rules[$i]->page_to ?? '';
+				$url_from = $rules[$i]->url_from ?? '';
+				$url_to = $rules[$i]->url_to ?? '';
+				$path_mode = $rules[$i]->path_mode ?? 'exact';
+				$path_keyword = $rules[$i]->path_keyword ?? '';
+				$new_parameter = $rules[$i]->new_parameter ?? '';
+				$wpml_code = $rules[$i]->wpml_code ?? '';
+				$http_code = $rules[$i]->http_code ?? 302;
+				$dialog_message = $rules[$i]->dialog_message ?? '';
 
 				if (!$is_active) {
 					continue;
@@ -1877,19 +1870,57 @@ class IP2LocationRedirection
 				if ($this->is_country_match($result, $country_codes)) {
 					$this->write_debug_log('"' . $result['country_code'] . '" is listed in [' . implode(', ', $country_codes) . ']', 'MATCHED');
 
+					if ($page_from == 'path') {
+						$parts = parse_url($this->get_current_url());
+						$path = $parts['path'] ?? '';
+
+						switch ($path_mode) {
+							case 'exact':
+								if ($path == $path_keyword) {
+									$this->write_debug_log('Path "' . $path . '" matched "' . $path_keyword . '".', 'MATCHED');
+									$this->redirect_to($url_to, $http_code, $i, $dialog_message);
+								}
+								break;
+							case 'contains':
+								if (strpos($path, $path_keyword) !== false) {
+									$this->write_debug_log('Path "' . $path . '" contains "' . $path_keyword . '".', 'MATCHED');
+									$this->redirect_to($url_to, $http_code, $i, $dialog_message);
+								}
+								break;
+							case 'not_contains':
+								if (strpos($path, $path_keyword) === false) {
+									$this->write_debug_log('Path "' . $path . '" does not contain "' . $path_keyword . '".', 'MATCHED');
+									$this->redirect_to($url_to, $http_code, $i, $dialog_message);
+								}
+								break;
+							case 'begin':
+								if (strpos($path, $path_keyword) === 0) {
+									$this->write_debug_log('Path "' . $path . '" starts with "' . $path_keyword . '".', 'MATCHED');
+									$this->redirect_to($url_to, $http_code, $i, $dialog_message);
+								}
+								break;
+							case 'end':
+								if (substr($path, -strlen($path_keyword)) == $path_keyword) {
+									$this->write_debug_log('Path "' . $path . '" ends with "' . $path_keyword . '".', 'MATCHED');
+									$this->redirect_to($url_to, $http_code, $i, $dialog_message);
+								}
+								break;
+						}
+					}
+
 					if ($page_from == 'domain') {
 						// Keep query string
 						if (substr($url_from, 0, 1) == '*') {
 							if (substr($url_from, 1) == $this->http_host()) {
 								$this->write_debug_log('Domain "' . $url_from . '" matched "' . $this->http_host() . '".', 'MATCHED');
-								$this->redirect_to(str_replace(substr($url_from, 1), $url_to . ((!empty($new_parameter) ? (((strpos($url_to, '?') === false) ? '?' : '&') . $new_parameter) : '')), $this->get_current_url()), $http_code);
+								$this->redirect_to(str_replace(substr($url_from, 1), $url_to . ((!empty($new_parameter) ? (((strpos($url_to, '?') === false) ? '?' : '&') . $new_parameter) : '')), $this->get_current_url()), $http_code, $i, $dialog_message);
 							} else {
 								$this->write_debug_log('Domain "' . $url_from . '" not match "' . $this->http_host() . '".');
 							}
 						} else {
 							if ($url_from == $this->http_host()) {
 								$this->write_debug_log('Domain "' . $url_from . '" matched "' . $this->http_host() . '".', 'MATCHED');
-								$this->redirect_to(str_replace($url_from, $url_to . ((!empty($new_parameter) ? ('?' . $new_parameter) : '')), $this->get_current_url(false)), $http_code);
+								$this->redirect_to(str_replace($url_from, $url_to . ((!empty($new_parameter) ? ('?' . $new_parameter) : '')), $this->get_current_url(false)), $http_code, $i, $dialog_message);
 							} else {
 								$this->write_debug_log('Domain "' . $url_from . '" not match "' . $this->http_host() . '".');
 							}
@@ -1937,7 +1968,7 @@ class IP2LocationRedirection
 									return;
 								}
 
-								$this->redirect_to($target_url, $http_code);
+								$this->redirect_to($target_url, $http_code, $i, $dialog_message);
 							}
 
 							// Prevent infinite loop
@@ -1945,7 +1976,7 @@ class IP2LocationRedirection
 								return;
 							}
 
-							$this->redirect_to($url_to, $http_code);
+							$this->redirect_to($url_to, $http_code, $i, $dialog_message);
 						}
 
 						list($page_type, $page_id) = explode('-', $page_to);
@@ -1974,7 +2005,7 @@ class IP2LocationRedirection
 							}
 						}
 
-						$this->redirect_to($target_url, $http_code);
+						$this->redirect_to($target_url, $http_code, $i, $dialog_message);
 					}
 
 					if ($page_from == 'home') {
@@ -2018,10 +2049,10 @@ class IP2LocationRedirection
 									parse_str($new_parameter, $extra_queries);
 								}
 
-								$this->redirect_to($this->build_url($parts['scheme'], $parts['host'], $parts['path'], array_merge($queries, $extra_queries)), $http_code);
+								$this->redirect_to($this->build_url($parts['scheme'], $parts['host'], $parts['path'], array_merge($queries, $extra_queries)), $http_code, $i, $dialog_message);
 							}
 
-							$this->redirect_to($url_to, $http_code);
+							$this->redirect_to($url_to, $http_code, $i, $dialog_message);
 						}
 
 						list($page_type, $page_id) = explode('-', $page_to);
@@ -2058,7 +2089,7 @@ class IP2LocationRedirection
 								parse_str($new_parameter, $extra_queries);
 							}
 
-							$this->redirect_to($this->build_url($parts['scheme'], $parts['host'], $parts['path'], array_merge($queries, $extra_queries)), $http_code);
+							$this->redirect_to($this->build_url($parts['scheme'], $parts['host'], $parts['path'], array_merge($queries, $extra_queries)), $http_code, $i, $dialog_message);
 						}
 
 						$link = $this->get_permalink($page_id);
@@ -2079,7 +2110,7 @@ class IP2LocationRedirection
 							$link .= ((strpos($link, '?') === false) ? '?' : '&') . $new_parameter;
 						}
 
-						$this->redirect_to($link, $http_code);
+						$this->redirect_to($link, $http_code, $i, $dialog_message);
 					}
 
 					$this->write_debug_log('Page is not matched.');
@@ -2184,6 +2215,39 @@ class IP2LocationRedirection
 	{
 		$this->cache_clear();
 		$this->set_priority();
+	}
+
+	public function daily_event()
+	{
+		// Do not run update if lookup mode is not bin
+		if ($this->get_option('lookup_mode') != 'bin') {
+			return;
+		}
+
+		// Do not run update if auto update is disabled
+		if (!$this->get_option('auto_update')) {
+			return;
+		}
+
+		$token = $this->get_option('token');
+		$enable_region = $this->get_option('enable_region_redirect');
+		$ipv4_only = $this->get_option('download_ipv4_only');
+
+		if (empty($token)) {
+			return;
+		}
+
+		// Do not perform updates if the database date is less than 29 days
+		if (strtotime((string) $this->get_database_date()) > strtotime('-29 days')) {
+			return;
+		}
+
+		try {
+			$this->perform_database_update($token, $enable_region, $ipv4_only);
+			$this->write_debug_log('IP2Location BIN Database updated via cron job.', 'SUCCESS');
+		} catch (Exception $e) {
+			$this->write_debug_log('IP2Location BIN Database update failed: ' . $e->getMessage(), 'ERROR');
+		}
 	}
 
 	private function wpdb_query($query, ...$args)
@@ -2463,7 +2527,7 @@ class IP2LocationRedirection
 		return $this->build_url($parts['scheme'], $parts['host'], (isset($parts['path'])) ? $parts['path'] : '', ($add_query) ? $queries : []);
 	}
 
-	private function redirect_to($url, $mode)
+	private function redirect_to($url, $mode, $rule_index, $message = '')
 	{
 		if (preg_match('/page_id=([0-9]+)$/', $url, $matches)) {
 			$url = $this->get_permalink($matches[1]);
@@ -2471,10 +2535,57 @@ class IP2LocationRedirection
 
 		$url = preg_replace('/^\/+/', '/', $url);
 
-		$this->write_debug_log('Destination: ' . $url, 'REDIRECTED');
+		switch ($mode) {
+			case 'dialog':
+				echo <<< HTML
+					<!DOCTYPE html>
+					<html lang="en">
+					<head>
+						<title>Redirection</title>
+						<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.8/css/bootstrap.min.css">
+					</head>
+					<body class="bg-secondary-subtle">
+						<div class="container mt-5">
+							<div class="row">
+								<div class="col-12 col-md-6 offset-md-3 text-center">
+									<div class="card w-100">
+										<div class="card-body">
+											<h5 class="card-title">Redirection</h5>
+											<p class="card-text">
+												<div class="alert alert-secondary">$message</div>
+											</p>
+											<button class="btn btn-dark" onclick="window.location.href = '$url'">Go to Destination</button>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</body>
+				</html>
+				HTML;
 
-		header('HTTP/1.1 301 Moved Permanently');
-		header('Location: ' . $url, true, $mode);
+				$this->write_debug_log('Destination: ' . $url, 'DIALOG DISPLAYED');
+				break;
+			case '301':
+				header('HTTP/1.1 301 Moved Permanently');
+				header('Location: ' . $url, true, 301);
+
+				$this->write_debug_log('Destination: ' . $url, 'REDIRECTED');
+				break;
+
+			case '302':
+				header('HTTP/1.1 302 Found');
+				header('Location: ' . $url, true, 302);
+
+				$this->write_debug_log('Destination: ' . $url, 'REDIRECTED');
+				break;
+		}
+
+		$rules = json_decode($this->get_option('rules'));
+
+		$rules[$rule_index]->total_hits++;
+		$rules[$rule_index]->last_access = date('Y-m-d H:i:s');
+		$this->update_option('rules', json_encode($rules));
 
 		exit;
 	}
@@ -2895,7 +3006,7 @@ class IP2LocationRedirection
 			$ip = inet_pton($ip);
 			$subnet = inet_pton($subnet);
 
-			$binMask = str_repeat('f', $mask / 4);
+			$binMask = str_repeat('f', (int)($mask / 4));
 			switch ($mask % 4) {
 				case 0:
 					break;

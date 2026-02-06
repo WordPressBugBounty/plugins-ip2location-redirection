@@ -28,15 +28,13 @@
     vertical-align: text-top
 }
 
-.url-container,
-.domain-container,
-.parameter-container,
-.wpml-container,
-.post-container {
+.from-container,.to-container {
     padding: 5px 0
 }
 
 .url-container input,
+.path-container input,
+.dialog-message-container input,
 .domain-container input[type="text"] {
     margin: 0;
     width: 100%
@@ -45,6 +43,9 @@
 .post-select {
     padding-top:10px;
     margin-top: 10px;
+}
+.path-container input, .dialog-message-container input {
+    margin-top: 5px;
 }
 .parameter-container input, .wpml-container input {
     margin: 0;

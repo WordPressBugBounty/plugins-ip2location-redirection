@@ -1,10 +1,10 @@
 === IP2Location Redirection ===
 Contributors: IP2Location
-Donate link: http://www.ip2location.com
+Donate link: https://www.ip2location.com
 Tags: ip2location, country redirection, website redirect, page redirector, redirection, targeted content, ip address, 301, 302, country, ipv4, ipv6, geolocation
 Requires at least: 4.6
-Tested up to: 6.8
-Stable tag: 1.35.0
+Tested up to: 6.9
+Stable tag: 1.38.0
 
 Redirects visitors to a blog page or a predefined URL based on their country and region geolocated using IP address.
 
@@ -40,7 +40,7 @@ Yes, please download the latest DB1 BIN file for a quick test from https://lite.
 If you need redirect by region, kindly use DB3 at https://lite.ip2location.com/database/ip-country-region-city
 
 = Where can I download the BIN file? =
-You can download the IP geolocation LITE edition which is free at [https://lite.ip2location.com](https://lite.ip2location.com "https://lite.ip2location.com") or commercial edition at [https://www.ip2location.com](http://www.ip2location.com "https://www.ip2location.com"). Decompress the downloaded .BIN file and upload it to `wp-content/uploads/ip2location`.
+You can download the IP geolocation LITE edition which is free at [https://lite.ip2location.com](https://lite.ip2location.com "https://lite.ip2location.com") or commercial edition at [https://www.ip2location.com](https://www.ip2location.com "https://www.ip2location.com"). Decompress the downloaded .BIN file and upload it to `wp-content/uploads/ip2location`.
 
 = Do I need to update the BIN file? =
 We encourage you to update your BIN file every month so that your plugin works with the latest IP geolocation result. The update usually be ready on the 1st week of every calendar month.
@@ -62,6 +62,11 @@ Send us an email at support@ip2location.com
 1. Redirect visitor from California and New York to https://google.com.
 
 == Changelog ==
+* 1.38.0 Disabled redirection for WP-CLI.
+* 1.37.0 Updated to the latest version of IP2Location library.
+* 1.36.1 Fixed implicit conversion of mask to int.
+* 1.36.0 Added rule statistics, advance path matching, dialog prompt, and automatically BIN database updates.
+* 1.35.1 Fixed "Download IPv4 database only" checkbox was ignore during database update.
 * 1.35.0 Added ability to flush cached data.
 * 1.34.3 Restored option to skip bots & crawlers.
 * 1.34.2 Fixed PHP warning when cronjobs are running.

@@ -24,16 +24,25 @@ jQuery(document).ready(function ($) {
 		promptSave = true;
 	});
 
-	function insert_rule(country_codes, from, to, url_from, url_to, new_parameter, language_code, http_code, status) {
-		// Backward Compatibility
-		if (typeof (status) === 'undefined') {
-			status = http_code;
-			http_code = language_code;
-			language_code = new_parameter;
-			new_parameter = '';
-		}
+	function insert_rule(inputs) {
+		var inputs = inputs || {};
 
-		var countries = {
+		var country_codes = ('country_codes' in inputs) ? inputs.country_codes : [];
+		var from = ('page_from' in inputs) ? inputs.page_from : '';
+		var to = ('page_to' in inputs) ? inputs.page_to : '';
+		var url_from = ('url_from' in inputs) ? inputs.url_from : '';
+		var path_mode = ('path_mode' in inputs) ? inputs.path_mode : 'exact';
+		var path_keyword = ('path_keyword' in inputs) ? inputs.path_keyword : '';
+		var url_to = ('url_to' in inputs) ? inputs.url_to : '';
+		var new_parameter = ('new_parameter' in inputs) ? inputs.new_parameter : '';
+		var language_code = ('language_code' in inputs) ? inputs.language_code : '';
+		var http_code = ('http_code' in inputs) ? inputs.http_code : 301;
+		var dialog_message = ('dialog_message' in inputs) ? inputs.dialog_message : '';
+		var total_hits = ('total_hits' in inputs) ? inputs.total_hits : 0;
+		var last_access = ('last_access' in inputs) ? inputs.last_access : '';
+		var status = ('status' in inputs) ? inputs.status : true;
+
+		const countries = {
 			"": "",
 			"AF": "Afghanistan",
 			"AL": "Albania",
@@ -286,7 +295,7 @@ jQuery(document).ready(function ($) {
 			"AX": "\u00c5land Islands"
 		};
 
-		var regions = {
+		const regions = {
 			'AD': {
 				'AD.07': 'Andorra la Vella',
 				'AD.02': 'Canillo',
@@ -3945,9 +3954,18 @@ jQuery(document).ready(function ($) {
 			},
 		};
 
-		var http_codes = {
+		const path_modes = {
+			"exact": "Path Exact Match",
+			"contains": "Path Contains",
+			"not_contains": "Path Not Contains",
+			"begin": "Path Begin With",
+			"end": "Path End With",
+		};
+
+		const http_codes = {
 			"301": "301 Permanently Redirect",
-			"302": "302 Temporary Redirect"
+			"302": "302 Temporary Redirect",
+			"dialog": "Display Dialog Message"
 		};
 
 		var exclude = false;
@@ -4052,24 +4070,24 @@ jQuery(document).ready(function ($) {
 			.on('change', function () {
 				if ($(this).attr('data-prev') == 'domain') {
 					$(this).parent().parent().find('.redirect-to').val('');
-					$(this).parent().parent().find('.domain-container').slideUp('fast');
 					$('.chosen').trigger('chosen:updated');
 				}
 
 				if ($(this).val() == 'url') {
 					$(this).parent().find('.url-container').slideDown();
-					$(this).parent().find('.domain-container, .post-container').slideUp('fast');
+					$(this).parent().find('.path-container, .domain-container, .post-container').slideUp(1);
+				} else if ($(this).val() == 'path') {
+					$(this).parent().find('.path-container').slideDown();
+					$(this).parent().find('.domain-container, .post-container, .url-container').slideUp(1);
 				} else if ($(this).val() == 'domain') {
 					$(this).parent().parent().find('.domain-container').slideDown();
-					$(this).parent().parent().find('.url-container, .post-container').slideUp('fast');
-
+					$(this).parent().parent().find('.path-container, .post-container, .url-container, .wpml-container').slideUp(1);
 					$(this).parent().parent().find('.redirect-to').val('domain');
 					$('.chosen').trigger('chosen:updated');
 				} else if ($(this).val() == 'post') {
 					var select = $(this).parent().find('.post-select');
-
 					$(this).parent().find('.post-container').slideDown();
-					$(this).parent().find('.url-container, .domain-container').slideUp('fast');
+					$(this).parent().find('.path-container, .domain-container, .url-container').slideUp(1);
 
 					select.chosen({
 						width: 240
@@ -4093,13 +4111,14 @@ jQuery(document).ready(function ($) {
 						}
 					});
 				} else {
-					$(this).parent().find('.url-container, .domain-container, .post-container').slideUp('fast');
+					$(this).parent().find('.path-container, .domain-container, .post-container, .url-container').slideUp(1);
 				}
 			})
 			.append('<option value=""></option>')
 			.append('<option value="any"> Any Page</option>')
 			.append('<option value="home"> Home Page</option>')
 			.append('<option value="post"> Custom Page or Post</option>')
+			.append('<option value="path"> Advance Path Matching</option>')
 			.append('<option value="url"> [Enter URL]</option>')
 			.append('<option value="domain"> [Enter Domain]</option>');
 
@@ -4112,17 +4131,16 @@ jQuery(document).ready(function ($) {
 			})
 			.on('change', function () {
 				if ($(this).attr('data-prev') == 'domain') {
-					$(this).parent().parent().find('.redirect-from').val('');
-					$(this).parent().parent().find('.domain-container, .wpml-container, .post-container').slideUp('fast');
+					$(this).parent().parent().find('.redirect-from').val('').trigger('change');
 					$('.chosen').trigger('chosen:updated');
 				}
 
 				if ($(this).val() == 'url') {
 					$(this).parent().find('.url-container').slideDown();
-					$(this).parent().find('.domain-container, .wpml-container, .post-container').slideUp('fast');
+					$(this).parent().find('.domain-container, .post-container, .wpml-container').slideUp(1);
 				} else if ($(this).val() == 'domain') {
 					$(this).parent().parent().find('.domain-container').slideDown();
-					$(this).parent().parent().find('.url-container, .wpml-container, .post-container').slideUp('fast');
+					$(this).parent().parent().find('.url-container, .path-container, .post-container, .wpml-container').slideUp(1);
 
 					$(this).parent().parent().find('.redirect-from').val('domain');
 					$('.chosen').trigger('chosen:updated');
@@ -4130,7 +4148,7 @@ jQuery(document).ready(function ($) {
 					var select = $(this).parent().find('.post-select');
 
 					$(this).parent().find('.post-container, .wpml-container').slideDown();
-					$(this).parent().find('.url-container, .domain-container').slideUp('fast');
+					$(this).parent().find('.url-container, .domain-container').slideUp(1);
 
 					select.chosen({
 						width: 240
@@ -4158,15 +4176,31 @@ jQuery(document).ready(function ($) {
 			.append('<option value=""></option>')
 			.append('<option value="url"> [Enter URL]</option>')
 			.append('<option value="domain"> [Enter Domain]</option>')
-			.append('<option value="post"> Custom Page or Post</option>');
+			.append('<option value="post"> Custom Page or Post</option>')
 
 		var $post_from_list = $('<select name="post_from[]" class="post-select" data-placeholder="Search...">');
 		var $post_to_list = $('<select name="post_to[]" class="post-select" data-placeholder="Search...">');
+
+		var $path_mode_list = $('<select name="path_mode[]" data-placeholder="Choose Mode..." class="chosen path-mode">');
+
+		$.each(path_modes, function (mode, mode_name) {
+			$path_mode_list.append('<option value="' + mode + '"' + ((mode == path_mode) ? ' selected' : '') + '>' + mode_name + '</option>');
+		});
 
 		var $http_code_list = $('<select name="status_code[]"  data-placeholder="Choose Redirection..." class="chosen http-code">');
 
 		$.each(http_codes, function (code, code_name) {
 			$http_code_list.append('<option value="' + code + '"' + ((code == http_code) ? ' selected' : '') + '>' + code_name + '</option>');
+		});
+
+		$http_code_list.on('change', function () {
+			promptSave = true;
+
+			if ($(this).val() == 'dialog') {
+				$(this).parent().find('.dialog-message-container').show();
+			} else {
+				$(this).parent().find('.dialog-message-container').hide();
+			}
 		});
 
 		$from_list.find('option[value="' + from + '"]').attr('selected', '');
@@ -4206,22 +4240,30 @@ jQuery(document).ready(function ($) {
 			.append('<label>Append Parameters:</label>')
 			.append($new_parameter);
 
+		var $div_statistics = $('<div class="statistics" style="position:absolute;bottom:0;left:0;margin-top:15px; padding: 0 0 20px 10px;"></div>')
+			.append('<strong>Total Hits: ' + total_hits + '</strong><br><strong>Last Access: ' + (last_access.length > 0 ? last_access : '-') + '</strong>')
+			.append('<input type="hidden" name="total_hits[]" value="' + total_hits + '">')
+			.append('<input type="hidden" name="last_access[]" value="' + last_access + '">');
+
+		$div_spacer = $('<div class="spacer" style="min-height: 100px;">');
+
 		var $rule = $('<tr>')
-			.append($('<td>').append($country_list).append('<input type="hidden" name="country_codes[]" value="' + country_codes + '" class="country_codes">').append($('<p />').append($('<label />').append($exclude_checkbox).append($exclude_input).append(' Redirect all <strong>except</strong> locations listed above.'))))
+			.append($('<td style="position: relative;">').append($country_list).append('<input type="hidden" name="country_codes[]" value="' + country_codes + '" class="country_codes">').append($('<p />').append($('<label />').append($exclude_checkbox).append($exclude_input).append(' Redirect all <strong>except</strong> locations listed above.')).append($div_spacer).append($div_statistics)))
 			.append($('<td>').append($from_list)
-				.append('<div class="url-container" style="display:' + ((from == 'url') ? 'block' : 'none') + '"><input type="text" name="url_from[]" value="' + url_from + '" class="url regular-text" placeholder="https://www.example.com" maxlength="255" /></div>')
-				.append($('<div class="domain-container" style="display:' + ((from == 'domain') ? 'block' : 'none') + '">').append('<input type="text" name="domain_from[]" value="' + url_from + '" class="domain regular-text" placeholder="example.com" maxlength="255" />').append($keep_query_input).append($keep_query_checkbox))
-				.append($('<div class="post-container" style="display:' + ((from.substr(0, 4) == 'post' || from.substr(0, 4) == 'page') ? 'block' : 'none') + '">').append($post_from_list))
+				.append('<div class="url-container from-container" style="display:' + ((from == 'url') ? 'block' : 'none') + '"><input type="text" name="url_from[]" value="' + url_from + '" class="url regular-text" placeholder="https://www.example.com" maxlength="255" /></div>')
+				.append($('<div class="path-container from-container" style="display:' + ((from == 'path') ? 'block' : 'none') + '">').append($path_mode_list).append('<input type="text" name="path_keyword[]" value="' + path_keyword + '" class="regular-text path-keyword" placeholder="/my_custom_page" maxlength="255" />'))
+				.append($('<div class="domain-container from-container" style="display:' + ((from == 'domain') ? 'block' : 'none') + '">').append('<input type="text" name="domain_from[]" value="' + url_from + '" class="domain regular-text" placeholder="example.com" maxlength="255" />').append($keep_query_input).append($keep_query_checkbox))
+				.append($('<div class="post-container from-container" style="display:' + ((from.substr(0, 4) == 'post' || from.substr(0, 4) == 'page') ? 'block' : 'none') + '">').append($post_from_list))
 			)
 			.append($('<td>')
 				.append($destination_list)
-				.append('<div class="url-container" style="display:' + ((to == 'url') ? 'block' : 'none') + '"><input type="text" name="url_to[]" value="' + url_to + '" class="url regular-text" placeholder="https://www.example.com" maxlength="255" /></div>')
-				.append('<div class="domain-container" style="display:' + ((to == 'domain') ? 'block' : 'none') + '"><input type="text" name="domain_to[]" value="' + url_to + '" class="domain regular-text" placeholder="example.com" maxlength="255" /></div>')
-				.append($('<div class="post-container" style="display:' + ((to.substr(0, 4) == 'post' || to.substr(0, 4) == 'page') ? 'block' : 'none') + '">').append($post_to_list))
-				.append('<div class="wpml-container" style="display:' + ((to.substr(0, 4) == 'post' || to.substr(0, 4) == 'page') ? 'block' : 'none') + '"><label>WPML Language Code:</label><input type="text" name="wpml_code[]" value="' + language_code + '" class="wpml-codes regular-text" maxlength="10"' + ((wpml_installed) ? '' : ' disabled') + ' /><br><small>Enter a <a href="https://wpml.org/" target="_blank">WPML</a> language code to translate destination page.' + ((!wpml_installed) ? ' [Not installed]' : '') + '</small></div>')
+				.append('<div class="url-container to-container" style="display:' + ((to == 'url') ? 'block' : 'none') + '"><input type="text" name="url_to[]" value="' + url_to + '" class="url regular-text" placeholder="https://www.example.com" maxlength="255" /></div>')
+				.append('<div class="domain-container to-container" style="display:' + ((to == 'domain') ? 'block' : 'none') + '"><input type="text" name="domain_to[]" value="' + url_to + '" class="domain regular-text" placeholder="example.com" maxlength="255" /></div>')
+				.append($('<div class="post-container to-container" style="display:' + ((to.substr(0, 4) == 'post' || to.substr(0, 4) == 'page') ? 'block' : 'none') + '">').append($post_to_list))
+				.append('<div class="wpml-container to-container" style="display:' + ((to.substr(0, 4) == 'post' || to.substr(0, 4) == 'page') ? 'block' : 'none') + '"><label>WPML Language Code:</label><input type="text" name="wpml_code[]" value="' + language_code + '" class="wpml-codes regular-text" maxlength="10"' + ((wpml_installed) ? '' : ' disabled') + ' /><br><small>Enter a <a href="https://wpml.org/" target="_blank">WPML</a> language code to translate destination page.' + ((!wpml_installed) ? ' [Not installed]' : '') + '</small></div>')
 				.append($div_parameter)
 			)
-			.append($('<td>').append($http_code_list))
+			.append($('<td>').append($http_code_list).append('<div class="dialog-message-container" style="display:' + ((http_code == 'dialog') ? 'block' : 'none') + '"><input type="text" name="dialog_message[]" value="' + dialog_message + '" class="dialog-message regular-text" maxlength="255" placeholder="Insert your message..." /></div>'))
 			.append($('<td>').append($status))
 			.append($('<td>').append('<a href="javascript:;" class="button-rule-action"></a>'));
 
@@ -4305,22 +4347,26 @@ jQuery(document).ready(function ($) {
 
 		$('#rules tr:last-child').find('.button-rule-action').html('<span class="dashicons dashicons-insert"></span>').off('click').on('click', function (e) {
 			e.preventDefault();
-			insert_rule([], '', '', '', '', '', 301, true);
+			insert_rule();
 		});
+
+		$('#rules tr').css({ backgroundColor: 'transparent' });
+		$('#rules tr').find('.spacer').css({ display: 'block' });
+		$('#rules tr').find('.statistics').css({ display: 'block' });
+
+		$('#rules tr:last-child').css({ backgroundColor: 'azure' });
+		$('#rules tr:last-child').find('.spacer').css({ display: 'none' });
+		$('#rules tr:last-child').find('.statistics').css({ display: 'none' });
 	}
 
 	function load_rules() {
 		if (typeof (rules) !== 'undefined') {
 			$.each(rules, function (i, row) {
-				if (Object.keys(row).length == 9) {
-					insert_rule(row.country_codes, row.page_from, row.page_to, row.url_from, row.url_to, row.new_parameter, row.language_code, row.http_code, row.is_active);
-				} else {
-					insert_rule(row.country_codes, row.page_from, row.page_to, row.url_from, row.url_to, '', row.language_code, row.http_code, row.is_active);
-				}
+				insert_rule(row);
 			});
-
-			insert_rule([], '', '', '', '', '', '', 301, true);
 		}
+
+		insert_rule();
 	}
 
 	//for wizard

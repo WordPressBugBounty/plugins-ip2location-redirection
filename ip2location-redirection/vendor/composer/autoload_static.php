@@ -4,17 +4,32 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInit4b9a83d71f3c1c85c2d163d8335d1ad5
+class ComposerStaticInite0393f7122caeb6588f3264c0dea39ef
 {
+    public static $prefixLengthsPsr4 = array (
+        'I' => 
+        array (
+            'IP2Location\\' => 12,
+        ),
+    );
+
+    public static $prefixDirsPsr4 = array (
+        'IP2Location\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/ip2location/ip2location-php/src',
+        ),
+    );
+
     public static $classMap = array (
-        'IP2Location\\Database' => __DIR__ . '/..' . '/ip2location/ip2location-php/IP2Location.php',
-        'IP2Location\\WebService' => __DIR__ . '/..' . '/ip2location/ip2location-php/IP2Location.php',
+        'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
     );
 
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->classMap = ComposerStaticInit4b9a83d71f3c1c85c2d163d8335d1ad5::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInite0393f7122caeb6588f3264c0dea39ef::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInite0393f7122caeb6588f3264c0dea39ef::$prefixDirsPsr4;
+            $loader->classMap = ComposerStaticInite0393f7122caeb6588f3264c0dea39ef::$classMap;
 
         }, null, ClassLoader::class);
     }
