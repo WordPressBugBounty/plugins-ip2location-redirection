@@ -4241,7 +4241,7 @@ jQuery(document).ready(function ($) {
 			.append($new_parameter);
 
 		var $div_statistics = $('<div class="statistics" style="position:absolute;bottom:0;left:0;margin-top:15px; padding: 0 0 20px 10px;"></div>')
-			.append('<strong>Total Hits: ' + total_hits + '</strong><br><strong>Last Access: ' + (last_access.length > 0 ? last_access : '-') + '</strong>')
+			.append('<strong>Total Hits: ' + total_hits + '</strong><br><strong>Last Access: ' + ((last_access && last_access.length > 0) ? last_access : '-') + '</strong>')
 			.append('<input type="hidden" name="total_hits[]" value="' + total_hits + '">')
 			.append('<input type="hidden" name="last_access[]" value="' + last_access + '">');
 
