@@ -4,7 +4,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.38.1
+ * Version: 1.39.0
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -52,7 +52,7 @@ class IP2LocationRedirection
 	];
 
 	private $allowed_options = [
-		'api_key', 'auto_update', 'database', 'debug_log_enabled', 'download_ipv4_only', 'enable_region_redirect', 'enabled', 'first_redirect', 'ignore_query_string', 'ip_whitelist', 'lookup_mode', 'noredirect_enabled', 'private_key', 'real_ip_header', 'rules', 'session_message', 'skip_admins', 'skip_bots', 'token'
+		'api_key', 'auto_update', 'database', 'debug_log_enabled', 'download_ipv4_only', 'enable_region_redirect', 'enabled', 'first_redirect', 'ignore_query_string', 'ip_whitelist', 'lookup_mode', 'noredirect_enabled', 'private_key', 'real_ip_header', 'rules', 'session_message', 'skip_admins', 'skip_bots', 'skip_ai_bots', 'token'
 	];
 
 	private $debug_log = '';
@@ -236,6 +236,7 @@ class IP2LocationRedirection
 		add_option('ip2location_redirection_session_message', '');
 		add_option('ip2location_redirection_skip_admins', '1');
 		add_option('ip2location_redirection_skip_bots', '0');
+		add_option('ip2location_redirection_skip_ai_bots', '0');
 		add_option('ip2location_redirection_token', '');
 
 		// Create scheduled task
@@ -621,6 +622,7 @@ class IP2LocationRedirection
 		$enable_noredirect = $this->is_checked('enable_noredirect', $this->get_option('noredirect_enabled'));
 		$ignore_query_string = $this->is_checked('ignore_query_string', $this->get_option('ignore_query_string'));
 		$skip_bots = $this->is_checked('skip_bots', $this->get_option('skip_bots'));
+		$skip_ai_bots = $this->is_checked('skip_ai_bots', $this->get_option('skip_ai_bots'));
 		$skip_admins = $this->is_checked('skip_admins', $this->get_option('skip_admins'));
 		$ip_whitelist = $this->post('ip_whitelist', $this->get_option('ip_whitelist'));
 
@@ -819,6 +821,7 @@ class IP2LocationRedirection
 				$this->update_option('noredirect_enabled', $enable_noredirect);
 				$this->update_option('ignore_query_string', $ignore_query_string);
 				$this->update_option('skip_bots', $skip_bots);
+				$this->update_option('skip_ai_bots', $skip_ai_bots);
 				$this->update_option('skip_admins', $skip_admins);
 				$this->update_option('ip_whitelist', $ip_whitelist);
 
@@ -904,6 +907,14 @@ class IP2LocationRedirection
 							<label for="skip_bots">
 								<input type="checkbox" name="skip_bots" id="skip_bots"' . (($skip_bots) ? ' checked' : '') . '>
 								' . __('Do not redirect bots and crawlers.', 'ip2location-redirection') . '
+							</label>
+						</td>
+					</tr>
+					<tr>
+						<td>
+							<label for="skip_ai_bots">
+								<input type="checkbox" name="skip_ai_bots" id="skip_ai_bots"' . (($skip_ai_bots) ? ' checked' : '') . '>
+								' . __('Do not redirect AI bots.', 'ip2location-redirection') . '
 							</label>
 						</td>
 					</tr>
@@ -1816,6 +1827,12 @@ class IP2LocationRedirection
 			return;
 		}
 
+		if ($this->get_option('skip_ai_bots') && $this->is_ai_bot()) {
+			$this->write_debug_log('AI crawler detected.');
+
+			return;
+		}
+
 		if ($this->get_option('noredirect_enabled')) {
 			if ($this->get('noredirect') === 'true') {
 				$this->write_debug_log('"noredirect" parameter is found.');
@@ -2398,11 +2415,37 @@ class IP2LocationRedirection
 
 	private function is_bot()
 	{
-		if (preg_match('/baidu|bingbot|facebookexternalhit|googlebot|-google|ia_archiver|msnbot|naverbot|pingdom|seznambot|slurp|teoma|twitter|yandex|yeti|linkedinbot|pinterest/i', $this->user_agent())) {
-			return true;
-		}
+		return preg_match('/baidu|bingbot|facebookexternalhit|googlebot|-google|ia_archiver|msnbot|naverbot|pingdom|seznambot|slurp|teoma|twitter|yandex|yeti|linkedinbot|pinterest/i', $this->user_agent());
+	}
 
-		return false;
+	private function is_ai_bot()
+	{
+		$ai_bots = [
+			'GPTBot',               // OpenAI web crawler for training
+			'ChatGPT-User',         // ChatGPT web browsing plugin
+			'OAI-SearchBot',        // OpenAI Search
+			'anthropic-ai',         // Anthropic (Claude)
+			'ClaudeBot',            // Anthropic (Claude) general bot
+			'Claude-Web',           // Anthropic (Claude) web bot
+			'Google-Extended',      // Google's AI training crawler (Gemini)
+			'PerplexityBot',        // Perplexity AI search
+			'cohere-ai',            // Cohere AI
+			'omgili',               // Webhose/Omgili (Often used for AI datasets)
+			'omgilibot',            // Webhose/Omgili
+			'Diffbot',              // Diffbot (Visual AI scraping)
+			'Bytespider',           // ByteDance (TikTok/Douyin AI crawler)
+			'CCBot',                // Common Crawl (Primary data source for many LLMs)
+			'Amazonbot',            // Amazon's general crawler (often used for Alexa/AI)
+			'Applebot-Extended',    // Apple's AI training bot
+			'meta-externalagent',   // Meta (Facebook) AI crawler
+			'mistral-ai',           // Mistral AI
+			'ImagesiftBot',         // Image scraper often used for AI vision training
+			'PetalBot',             // Petal Search (Huawei), sometimes used for AI
+			'Scrapy',               // General Python scraper framework (often used for AI scraping)
+			'YouBot'                // You.com AI search engine
+		];
+
+		return preg_match('/(' . implode('|', array_map('preg_quote', $ai_bots)) . ')/i', $this->user_agent());
 	}
 
 	private function user_agent()
