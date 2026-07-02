@@ -44,6 +44,7 @@ jQuery(document).ready(function ($) {
 
 		const countries = {
 			"": "",
+			"ANY": "Any Country",
 			"AF": "Afghanistan",
 			"AL": "Albania",
 			"DZ": "Algeria",
@@ -3975,11 +3976,22 @@ jQuery(document).ready(function ($) {
 			$(this).parent().find('.country-codes').remove();
 
 			if ($(this).val()) {
+				var selected = $(this).val();
+				var hasAny = selected.indexOf('ANY') !== -1;
+				var hasOther = selected.some(function(code) { return code !== '' && code !== 'ANY'; });
+
+				// If "Any Country" is selected with other countries, keep only "Any Country"
+				if (hasAny && hasOther) {
+					selected = ['ANY'];
+					$(this).val(selected);
+					$('.chosen').trigger('chosen:updated');
+				}
+
 				var countries = [];
 				var regions = [];
 				var list = [];
 
-				$.each($(this).val(), function (i, code) {
+				$.each(selected, function (i, code) {
 					if (code.indexOf('.') > -1) {
 						regions.push(code);
 					} else {

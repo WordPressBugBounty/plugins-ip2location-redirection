@@ -4,7 +4,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.39.2
+ * Version: 1.40.0
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -15,8 +15,8 @@ defined('FS_METHOD') || define('FS_METHOD', 'direct');
 defined('IP2LOCATION_DIR') || define('IP2LOCATION_DIR', $upload_dir['basedir'] . \DIRECTORY_SEPARATOR . 'ip2location' . \DIRECTORY_SEPARATOR);
 define('IPLR_ROOT', __DIR__ . \DIRECTORY_SEPARATOR);
 
-// For development usage.
-if (isset($_SERVER['DEV_MODE'])) {
+// For development usage only when WP_DEBUG is enabled and request is from localhost.
+if (defined('WP_DEBUG') && WP_DEBUG && !filter_var($_SERVER['REMOTE_ADDR'], FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) && isset($_SERVER['DEV_MODE'])) {
 	$_SERVER['REMOTE_ADDR'] = '8.8.8.8';
 }
 
@@ -474,14 +474,14 @@ class IP2LocationRedirection
 	{
 		header('Content-Type: application/json');
 
+		check_admin_referer('validate_api_key', '__nonce');
+
 		if (!current_user_can('administrator')) {
 			exit(json_encode([
 				'status'  => 'ERROR',
 				'message' => __('Permission denied.', 'ip2location-redirection'),
 			]));
 		}
-
-		check_admin_referer('validate_api_key', '__nonce');
 
 		try {
 			$apiKey = $this->post('key');
@@ -654,7 +654,7 @@ class IP2LocationRedirection
 					$last_access = $this->post('last_access')[$index] ?? '';
 
 					// Domain redirection must redirect from domain to domain
-					if (($from == 'domain' && $to != 'domain') || $to == 'domain' && $from != 'domain') {
+					if (($from == 'domain' && $to != 'domain') || ($to == 'domain' && $from != 'domain')) {
 						++$index;
 						continue;
 					}
@@ -854,6 +854,7 @@ class IP2LocationRedirection
 							<label for="first_redirect">
 								<input type="checkbox" name="first_redirect" id="first_redirect"' . (($first_redirect) ? ' checked' : '') . '>
 								' . __('Redirect on first visit only. Subsequent visits will be ignored.', 'ip2location-redirection') . '
+								<span class="dashicons dashicons-info" title="' . esc_attr__('A cookie is set in the visitor\'s browser after the first redirect. The cookie expires after 24 hours, so the visitor will not be redirected again during that period.', 'ip2location-redirection') . '" style="cursor:help;vertical-align:middle;color:#666;"></span>
 							</label>
 						</td>
 					</tr>
@@ -1044,9 +1045,9 @@ class IP2LocationRedirection
 			echo '
 			<div id="modal-get-started" class="ip2location-modal" style="display:block">
 				<div class="ip2location-modal-content">
-					<div align="center" style="margin:10px auto;">
-						<img src="' . plugins_url('/assets/img/logo.png', __FILE__) . '" width="200" height="24" align="center" alt="IP2Location"><br>
-						<img src="' . plugins_url('/assets/img/get-started.png', __FILE__) . '" width="160" height="125" align="center" style="margin-top:5px;" alt="IP2Location Redirection">
+					<div style="text-align:center;margin:10px auto;">
+						<img src="' . plugins_url('/assets/img/logo.png', __FILE__) . '" width="200" height="24" style="text-align:center;" alt="IP2Location"><br>
+						<img src="' . plugins_url('/assets/img/get-started.png', __FILE__) . '" width="160" height="125" style="display:block;margin:5px auto 0;" alt="IP2Location Redirection">
 					</div>
 					<p style="margin-top:0;">
 						' . sprintf(__('%1$sIP2Location Redirection%2$s is a plugin designed to redirect visitors or traffic based on their geolocation determined by their IP address.', 'ip2location-redirection'), '<strong>', '</strong>') . '
@@ -1081,7 +1082,7 @@ class IP2LocationRedirection
 								<input width="100" type="radio" name="ipl-sel" id="db" value="db" checked>
 								<label for="db">
 									<span class="ip2location-sel-img">
-										<img src="' . plugins_url('/assets/img/db.png', __FILE__) . '" width="90" height="90" align="center" alt="IP2Location BIN Database">
+										<img src="' . plugins_url('/assets/img/db.png', __FILE__) . '" width="90" height="90" style="text-align:center;" alt="IP2Location BIN Database">
 									</span>
 								</label>
 								<h4 style="margin-bottom:0;">' . __('IP2Location BIN Database (Local Query)', 'ip2location-redirection') . '</h4>
@@ -1091,11 +1092,11 @@ class IP2LocationRedirection
 								<input type="radio" name="ipl-sel" id="api" value="api" >
 								<label for="api">
 									<span class="ip2location-sel-img">
-										<img src="' . plugins_url('/assets/img/api.png', __FILE__) . '" width="90" height="90" align="center" alt="IP2Location.io IP Geolocation API">
+										<img src="' . plugins_url('/assets/img/api.png', __FILE__) . '" width="90" height="90" style="text-align:center;" alt="IP2Location.io IP Geolocation API">
 									</span>
 								</label>
 								<h4 style="margin-bottom:0;">' . __('IP2Location.io IP Geolocation API (Remote Query)', 'ip2location-redirection') . '</h4>
-								<p style="margin-top:8px;">' . __('Free 30K IP geolocation queries per month', 'ip2location-redirection') . '</p>
+								<p style="margin-top:8px;">' . __('Free 50K IP geolocation queries per month', 'ip2location-redirection') . '</p>
 							</div>
 						</div>
 					</div>
@@ -1108,20 +1109,20 @@ class IP2LocationRedirection
 			<!-- db -->
 			<div id="modal-db-step-1" class="ip2location-modal">
 				<div class="ip2location-modal-content">
-					<div align="center">
+					<div style="text-align:center;">
 						<h1 style="line-height:1.2;font-size:23px;margin-bottom:25px;">' . __('Set Up IP2Location LITE BIN Database', 'ip2location-redirection') . '</h1>
 						<table class="setup ip2location-steps" width="200">
 							<tr>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-1-selected.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 1"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-1-selected.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 1"><br>
 									' . __('Step 1', 'ip2location-redirection') . '
 								</td>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-2.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 2"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-2.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 2"><br>
 									' . __('Step 2', 'ip2location-redirection') . '
 								</td>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-3.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 3"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-3.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 3"><br>
 									' . __('Step 3', 'ip2location-redirection') . '
 								</td>
 							</tr>
@@ -1147,20 +1148,20 @@ class IP2LocationRedirection
 
 			<div id="modal-db-step-2" class="ip2location-modal">
 				<div class="ip2location-modal-content">
-					<div align="center">
+					<div style="text-align:center;">
 						<h1 style="line-height:1.2;font-size:23px;margin-bottom:25px;">' . __('Download IP2Location BIN Database', 'ip2location-redirection') . '</h1>
 						<table class="setup ip2location-steps" width="200">
 							<tr>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-1-selected.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 1"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-1-selected.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 1"><br>
 									' . __('Step 1', 'ip2location-redirection') . '
 								</td>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-2-selected.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 2"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-2-selected.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 2"><br>
 									' . __('Step 2', 'ip2location-redirection') . '
 								</td>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-3.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 3"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-3.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 3"><br>
 									' . __('Step 3', 'ip2location-redirection') . '
 								</td>
 							</tr>
@@ -1180,20 +1181,20 @@ class IP2LocationRedirection
 
 			<div id="modal-db-step-3" class="ip2location-modal">
 				<div class="ip2location-modal-content">
-					<div align="center">
+					<div style="text-align:center;">
 						<h1 style="line-height:1.2;font-size:23px;margin-bottom:25px;">' . __('Configure The Rules', 'ip2location-redirection') . '</h1>
 						<table class="setup ip2location-steps" width="200">
 							<tr>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-1-selected.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 1"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-1-selected.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 1"><br>
 									' . __('Step 1', 'ip2location-redirection') . '
 								</td>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-2-selected.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 2"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-2-selected.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 2"><br>
 									' . __('Step 2', 'ip2location-redirection') . '
 								</td>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-3-selected.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 3"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-3-selected.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 3"><br>
 									' . __('Step 3', 'ip2location-redirection') . '
 								</td>
 							</tr>
@@ -1215,16 +1216,16 @@ class IP2LocationRedirection
 			<!-- api -->
 			<div id="modal-api-step-1" class="ip2location-modal">
 				<div class="ip2location-modal-content">
-					<div align="center">
+					<div style="text-align:center;">
 						<h1 style="line-height:1.2;font-size:23px;margin-bottom:25px;">' . __('Set Up IP2Location.io IP Geolocation Service', 'ip2location-redirection') . '</h1>
 						<table class="setup ip2location-steps" width="200">
 							<tr>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-1-selected.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 1"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-1-selected.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 1"><br>
 									' . __('Step 1', 'ip2location-redirection') . '
 								</td>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-3.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 2"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-3.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 2"><br>
 									' . __('Step 2', 'ip2location-redirection') . '
 								</td>
 							</tr>
@@ -1250,16 +1251,16 @@ class IP2LocationRedirection
 
 			<div id="modal-api-step-2" class="ip2location-modal">
 				<div class="ip2location-modal-content">
-					<div align="center">
+					<div style="text-align:center;">
 						<h1 style="line-height:1.2;font-size:23px;margin-bottom:25px;">' . __('Configure The Rules', 'ip2location-redirection') . '</h1>
 						<table class="setup ip2location-steps" width="200">
 							<tr>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-1-selected.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 1"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-1-selected.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 1"><br>
 									' . __('Step 1', 'ip2location-redirection') . '
 								</td>
-								<td align="center">
-									<img src="' . plugins_url('/assets/img/step-3-selected.png', __FILE__) . '" width="36" height="36" align="center" alt="Wizard Step 2"><br>
+								<td style="text-align:center;">
+									<img src="' . plugins_url('/assets/img/step-3-selected.png', __FILE__) . '" width="36" height="36" style="text-align:center;" alt="Wizard Step 2"><br>
 									' . __('Step 2', 'ip2location-redirection') . '
 								</td>
 							</tr>
@@ -1471,8 +1472,6 @@ class IP2LocationRedirection
 				$this->update_option('download_ipv4_only', $download_ipv4_only);
 				$this->update_option('real_ip_header', $real_ip_header);
 				$this->update_option('auto_update', $enable_auto_update);
-
-				var_dump($enable_debug_log);
 
 				$settings_status .= '
 				<div id="message" class="updated">
@@ -1749,7 +1748,7 @@ class IP2LocationRedirection
 			<form id="form_download_backup" method="post">
 				' . wp_nonce_field('backup') . '
 				<input type="hidden" name="action" value="download_ip2location_redirection_backup">
-			</from>
+			</form>
 
 			<div class="clear"></div>
 		</div>';
@@ -1889,40 +1888,115 @@ class IP2LocationRedirection
 					$this->write_debug_log('"' . $result['country_code'] . '" is listed in [' . implode(', ', $country_codes) . ']', 'MATCHED');
 
 					if ($page_from == 'path') {
+						$trigger = false;
 						$parts = parse_url($this->get_current_url());
 						$path = $parts['path'] ?? '';
 
 						switch ($path_mode) {
 							case 'exact':
 								if ($path == $path_keyword) {
+									$trigger = true;
 									$this->write_debug_log('Path "' . $path . '" matched "' . $path_keyword . '".', 'MATCHED');
-									$this->redirect_to($url_to, $http_code, $i, $dialog_message);
 								}
 								break;
 							case 'contains':
 								if (strpos($path, $path_keyword) !== false) {
+									$trigger = true;
 									$this->write_debug_log('Path "' . $path . '" contains "' . $path_keyword . '".', 'MATCHED');
-									$this->redirect_to($url_to, $http_code, $i, $dialog_message);
 								}
 								break;
 							case 'not_contains':
 								if (strpos($path, $path_keyword) === false) {
+									$trigger = true;
 									$this->write_debug_log('Path "' . $path . '" does not contain "' . $path_keyword . '".', 'MATCHED');
-									$this->redirect_to($url_to, $http_code, $i, $dialog_message);
 								}
 								break;
 							case 'begin':
-								if (strpos($path, $path_keyword) === 0) {
+								if (str_starts_with($path, $path_keyword)) {
+									$trigger = true;
 									$this->write_debug_log('Path "' . $path . '" starts with "' . $path_keyword . '".', 'MATCHED');
-									$this->redirect_to($url_to, $http_code, $i, $dialog_message);
 								}
 								break;
 							case 'end':
-								if (substr($path, -strlen($path_keyword)) == $path_keyword) {
+								if (str_ends_with($path, $path_keyword)) {
+									$trigger = true;
 									$this->write_debug_log('Path "' . $path . '" ends with "' . $path_keyword . '".', 'MATCHED');
-									$this->redirect_to($url_to, $http_code, $i, $dialog_message);
 								}
 								break;
+						}
+
+						if ($trigger) {
+							if ($page_to == 'url') {
+								if ($_SERVER['QUERY_STRING']) {
+									parse_str($_SERVER['QUERY_STRING'], $query_string);
+
+									unset($query_string['page_id'], $query_string['p']);
+
+									$parts = parse_url($url_to);
+
+									$post_query = [];
+
+									if (isset($parts['query'])) {
+										parse_str($parts['query'], $post_query);
+									}
+
+									$path = (isset($parts['path'])) ? $parts['path'] : '';
+
+									$queries = array_merge($query_string, $post_query);
+
+									unset($queries['p']);
+
+									$extra_queries = [];
+
+									if (!empty($new_parameter)) {
+										parse_str($new_parameter, $extra_queries);
+									}
+
+									$target_url = $this->build_url($parts['scheme'], $parts['host'], $path, array_merge($queries, $extra_queries));
+
+									// Prevent infinite loop
+									if (trim($this->get_current_url(), '/') == trim($url_to, '/')) {
+										return;
+									}
+
+									$this->redirect_to($target_url, $http_code, $i, $dialog_message);
+								}
+
+								// Prevent infinite loop
+								if (trim($this->get_current_url(), '/') == trim($url_to, '/')) {
+									return;
+								}
+
+								$this->redirect_to($url_to, $http_code, $i, $dialog_message);
+							}
+
+							list($page_type, $page_id) = explode('-', $page_to);
+
+							// Prevent infinite loop
+							if ($page_id === $this->get_page_id()) {
+								return;
+							}
+
+							// Prevent infinite loop
+							if (rtrim($this->get_current_url(), '/') == rtrim($this->get_permalink($page_id), '/')) {
+								return;
+							}
+
+							$target_url = $this->get_permalink($page_id);
+
+							if ($wpml_code) {
+								$wpml_settings = get_option('icl_sitepress_settings');
+
+								if ($wpml_settings['language_negotiation_type'] == 1) {
+									$parts = parse_url($target_url);
+									$parts['path'] = '/' . $wpml_code . $parts['path'];
+									$target_url = $this->build_url($parts['scheme'], $parts['host'], $parts['path'], []);
+								} elseif ($wpml_settings['language_negotiation_type'] == 3) {
+									$target_url .= '?lang=' . $wpml_code;
+								}
+							}
+
+							$this->redirect_to($target_url, $http_code, $i, $dialog_message);
 						}
 					}
 
@@ -2372,6 +2446,11 @@ class IP2LocationRedirection
 		$region_code = $result['region_code'];
 
 		if (is_array($codes)) {
+			// Check for "Any Country" option
+			if (in_array('ANY', $codes)) {
+				return true;
+			}
+
 			$index = 0;
 
 			foreach ($codes as $country) {
@@ -2581,6 +2660,8 @@ class IP2LocationRedirection
 
 		switch ($mode) {
 			case 'dialog':
+				$escaped_message = esc_html($message);
+				$escaped_url = esc_url($url);
 				echo <<< HTML
 					<!DOCTYPE html>
 					<html lang="en">
@@ -2596,9 +2677,9 @@ class IP2LocationRedirection
 										<div class="card-body">
 											<h5 class="card-title">Redirection</h5>
 											<p class="card-text">
-												<div class="alert alert-secondary">$message</div>
+												<div class="alert alert-secondary">{$escaped_message}</div>
 											</p>
-											<button class="btn btn-dark" onclick="window.location.href = '$url'">Go to Destination</button>
+											<button class="btn btn-dark" onclick="window.location.href = '{$escaped_url}'">Go to Destination</button>
 										</div>
 									</div>
 								</div>
@@ -2711,7 +2792,6 @@ class IP2LocationRedirection
 					'region_code'  => $caches['region_code'],
 					'region_name'  => $caches['region_name'],
 				];
-				break;
 
 				// Local BIN database
 			default:
@@ -2768,7 +2848,6 @@ class IP2LocationRedirection
 					'region_code'  => $caches['region_code'],
 					'region_name'  => $caches['region_name'],
 				];
-				break;
 		}
 	}
 
