@@ -4,7 +4,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.40.0
+ * Version: 1.40.1
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -1876,7 +1876,7 @@ class IP2LocationRedirection
 				$path_mode = $rules[$i]->path_mode ?? 'exact';
 				$path_keyword = $rules[$i]->path_keyword ?? '';
 				$new_parameter = $rules[$i]->new_parameter ?? '';
-				$wpml_code = $rules[$i]->wpml_code ?? '';
+				$wpml_code = $rules[$i]->language_code ?? '';
 				$http_code = $rules[$i]->http_code ?? 302;
 				$dialog_message = $rules[$i]->dialog_message ?? '';
 
