@@ -4,7 +4,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.40.1
+ * Version: 1.40.2
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -1955,7 +1955,7 @@ class IP2LocationRedirection
 									$target_url = $this->build_url($parts['scheme'], $parts['host'], $path, array_merge($queries, $extra_queries));
 
 									// Prevent infinite loop
-									if (trim($this->get_current_url(), '/') == trim($url_to, '/')) {
+									if ($this->normalize_url($this->get_current_url()) === $this->normalize_url($target_url)) {
 										return;
 									}
 
@@ -1963,7 +1963,7 @@ class IP2LocationRedirection
 								}
 
 								// Prevent infinite loop
-								if (trim($this->get_current_url(), '/') == trim($url_to, '/')) {
+								if ($this->normalize_url($this->get_current_url()) === $this->normalize_url($url_to)) {
 									return;
 								}
 
@@ -1972,13 +1972,8 @@ class IP2LocationRedirection
 
 							list($page_type, $page_id) = explode('-', $page_to);
 
-							// Prevent infinite loop
-							if ($page_id === $this->get_page_id()) {
-								return;
-							}
-
-							// Prevent infinite loop
-							if (rtrim($this->get_current_url(), '/') == rtrim($this->get_permalink($page_id), '/')) {
+							// Prevent infinite redirect to same page
+							if ($page_id === $this->get_page_id() && !$wpml_code) {
 								return;
 							}
 
@@ -1994,6 +1989,11 @@ class IP2LocationRedirection
 								} elseif ($wpml_settings['language_negotiation_type'] == 3) {
 									$target_url .= '?lang=' . $wpml_code;
 								}
+							}
+
+							// Prevent infinite loop
+							if ($this->normalize_url($this->get_current_url()) === $this->normalize_url($target_url)) {
+								return;
 							}
 
 							$this->redirect_to($target_url, $http_code, $i, $dialog_message);
@@ -2056,7 +2056,7 @@ class IP2LocationRedirection
 								$target_url = $this->build_url($parts['scheme'], $parts['host'], $path, array_merge($queries, $extra_queries));
 
 								// Prevent infinite loop
-								if (trim($this->get_current_url(), '/') == trim($url_to, '/')) {
+								if ($this->normalize_url($this->get_current_url()) === $this->normalize_url($target_url)) {
 									return;
 								}
 
@@ -2064,7 +2064,7 @@ class IP2LocationRedirection
 							}
 
 							// Prevent infinite loop
-							if (trim($this->get_current_url(), '/') == trim($url_to, '/')) {
+							if ($this->normalize_url($this->get_current_url()) === $this->normalize_url($url_to)) {
 								return;
 							}
 
@@ -2073,13 +2073,8 @@ class IP2LocationRedirection
 
 						list($page_type, $page_id) = explode('-', $page_to);
 
-						// Prevent infinite loop
-						if ($page_id === $this->get_page_id()) {
-							return;
-						}
-
-						// Prevent infinite loop
-						if (rtrim($this->get_current_url(), '/') == rtrim($this->get_permalink($page_id), '/')) {
+						// Prevent infinite redirect to same page
+						if ($page_id === $this->get_page_id() && !$wpml_code) {
 							return;
 						}
 
@@ -2095,6 +2090,17 @@ class IP2LocationRedirection
 							} elseif ($wpml_settings['language_negotiation_type'] == 3) {
 								$target_url .= '?lang=' . $wpml_code;
 							}
+						}
+
+						// Normalize to full URL
+						if (strpos($target_url, '://') === false && $this->http_host()) {
+							$parts = parse_url($this->get_current_url());
+							$target_url = $this->build_url($parts['scheme'], $parts['host'], $target_url, []);
+						}
+
+						// Prevent infinite loop
+						if ($this->normalize_url($this->get_current_url()) === $this->normalize_url($target_url)) {
+							return;
 						}
 
 						$this->redirect_to($target_url, $http_code, $i, $dialog_message);
@@ -2149,6 +2155,11 @@ class IP2LocationRedirection
 
 						list($page_type, $page_id) = explode('-', $page_to);
 
+						// Prevent infinite redirect to same page
+						if ($page_id === $this->get_page_id() && !$wpml_code) {
+							return;
+						}
+
 						if ($_SERVER['QUERY_STRING']) {
 							parse_str($_SERVER['QUERY_STRING'], $query_string);
 
@@ -2200,6 +2211,17 @@ class IP2LocationRedirection
 
 						if (!empty($new_parameter)) {
 							$link .= ((strpos($link, '?') === false) ? '?' : '&') . $new_parameter;
+						}
+
+						// Normalize to full URL
+						if (strpos($link, '://') === false && $this->http_host()) {
+							$parts = parse_url($this->get_current_url());
+							$link = $this->build_url($parts['scheme'], $parts['host'], $link, []);
+						}
+
+						// Prevent infinite loop
+						if ($this->normalize_url($this->get_current_url()) === $this->normalize_url($link)) {
+							return;
 						}
 
 						$this->redirect_to($link, $http_code, $i, $dialog_message);
@@ -2340,6 +2362,18 @@ class IP2LocationRedirection
 		} catch (Exception $e) {
 			$this->write_debug_log('IP2Location BIN Database update failed: ' . $e->getMessage(), 'ERROR');
 		}
+	}
+
+	private function normalize_url($url)
+	{
+		$language_codes = ['af', 'am', 'ar', 'az', 'be', 'bg', 'bn', 'bs', 'ca', 'co', 'cs', 'cy', 'da', 'de', 'de-at', 'de-ch', 'de-li', 'de-lu', 'el', 'en', 'en-au', 'en-ca', 'en-gb', 'en-ie', 'en-in', 'en-nz', 'en-us', 'en-za', 'eo', 'es', 'es-bo', 'es-ar', 'es-cl', 'es-co', 'es-cr', 'es-cu', 'es-do', 'es-ec', 'es-es', 'es-gq', 'es-gt', 'es-hn', 'es-mx', 'es-ni', 'es-pa', 'es-pe', 'es-pr', 'es-py', 'es-sv', 'es-uy', 'es-ve', 'et', 'eu', 'fa', 'fi', 'fr', 'fr-be', 'fr-ca', 'fr-ch', 'fr-lu', 'ga', 'gl', 'gu', 'he', 'hi', 'hr', 'ht', 'hu', 'hy', 'id', 'is', 'it', 'it-ch', 'ja', 'ka', 'kk-kk', 'km', 'kn', 'ko', 'ku', 'lb', 'lt', 'lv', 'mk', 'mn', 'mr', 'ms', 'mt', 'ne', 'nl', 'nl-be', 'no', 'pa', 'pl', 'prs', 'pt', 'pt-br', 'pt-pt', 'pt-ao', 'pt-mz', 'ro', 'ru', 'si', 'sk', 'sl', 'so', 'sq', 'sr', 'sr-latn', 'sv', 'sw', 'ta', 'te', 'th', 'tir', 'tl', 'tr', 'uk', 'ur', 'uz', 'vi', 'yi', 'zh-hans', 'zh-hant', 'zh-cn', 'zh-hk', 'zh-mo', 'zh-sg', 'zh-tw', 'zu'];
+		$url = parse_url(trim($url, '/'));
+
+		if (in_array($url['host'], $language_codes)) {
+			$url['host'] = $language_codes[0];
+		}
+
+		return $url['scheme'] . '://' . $url['host'] . preg_replace('/^\/(' . implode('|', $language_codes) . ')\//', '/', $url['path']);
 	}
 
 	private function wpdb_query($query, ...$args)
