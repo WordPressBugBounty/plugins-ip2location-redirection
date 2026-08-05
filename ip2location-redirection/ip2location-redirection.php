@@ -4,7 +4,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.40.3
+ * Version: 1.41.0
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -52,7 +52,7 @@ class IP2LocationRedirection
 	];
 
 	private $allowed_options = [
-		'api_key', 'auto_update', 'database', 'debug_log_enabled', 'download_ipv4_only', 'enable_region_redirect', 'enabled', 'first_redirect', 'ignore_query_string', 'ip_whitelist', 'lookup_mode', 'noredirect_enabled', 'private_key', 'real_ip_header', 'rules', 'session_message', 'skip_admins', 'skip_bots', 'skip_ai_bots', 'token'
+		'api_key', 'auto_update', 'database', 'debug_log_enabled', 'download_ipv4_only', 'enable_region_redirect', 'enabled', 'first_redirect', 'first_redirect_cookie_lifetime', 'ignore_query_string', 'ip_whitelist', 'lookup_mode', 'noredirect_enabled', 'private_key', 'real_ip_header', 'rules', 'session_message', 'skip_admins', 'skip_bots', 'skip_ai_bots', 'token'
 	];
 
 	private $debug_log = '';
@@ -227,6 +227,7 @@ class IP2LocationRedirection
 		add_option('ip2location_redirection_enabled', '1');
 		add_option('ip2location_redirection_first_redirect', '0');
 		add_option('ip2location_redirection_ignore_query_string', '1');
+		add_option('ip2location_redirection_first_redirect_cookie_lifetime', '1 day');
 		add_option('ip2location_redirection_ip_whitelist', '');
 		add_option('ip2location_redirection_lookup_mode', 'bin');
 		add_option('ip2location_redirection_noredirect_enabled', '0');
@@ -626,6 +627,26 @@ class IP2LocationRedirection
 		$skip_admins = $this->is_checked('skip_admins', $this->get_option('skip_admins'));
 		$ip_whitelist = $this->post('ip_whitelist', $this->get_option('ip_whitelist'));
 
+		$cookie_lifetime = $this->post('first_redirect_cookie_lifetime', $this->get_option('first_redirect_cookie_lifetime'));
+
+		$cookie_lifetime_options = [
+			'1 day'   => __('1 day', 'ip2location-redirection'),
+			'1 week'  => __('1 week', 'ip2location-redirection'),
+			'1 month' => __('1 month', 'ip2location-redirection'),
+			'1 year'  => __('1 year', 'ip2location-redirection'),
+		];
+
+		if (!isset($cookie_lifetime_options[$cookie_lifetime])) {
+			$cookie_lifetime = '1 day';
+		}
+
+		$cookie_lifetime_select = '<select name="first_redirect_cookie_lifetime" id="first_redirect_cookie_lifetime">';
+
+		foreach ($cookie_lifetime_options as $value => $label) {
+			$cookie_lifetime_select .= '<option value="' . esc_attr($value) . '"' . (($cookie_lifetime == $value) ? ' selected' : '') . '>' . esc_html($label) . '</option>';
+		}
+
+		$cookie_lifetime_select .= '</select>';
 		if ($this->post('submit')) {
 			check_admin_referer('save_rules');
 
@@ -818,6 +839,7 @@ class IP2LocationRedirection
 				$this->update_option('enabled', $enable_redirection);
 				$this->update_option('first_redirect', $first_redirect);
 				$this->update_option('rules', json_encode($rules));
+				$this->update_option('first_redirect_cookie_lifetime', $cookie_lifetime);
 				$this->update_option('noredirect_enabled', $enable_noredirect);
 				$this->update_option('ignore_query_string', $ignore_query_string);
 				$this->update_option('skip_bots', $skip_bots);
@@ -854,7 +876,15 @@ class IP2LocationRedirection
 							<label for="first_redirect">
 								<input type="checkbox" name="first_redirect" id="first_redirect"' . (($first_redirect) ? ' checked' : '') . '>
 								' . __('Redirect on first visit only. Subsequent visits will be ignored.', 'ip2location-redirection') . '
-								<span class="dashicons dashicons-info" title="' . esc_attr__('A cookie is set in the visitor\'s browser after the first redirect. The cookie expires after 24 hours, so the visitor will not be redirected again during that period.', 'ip2location-redirection') . '" style="cursor:help;vertical-align:middle;color:#666;"></span>
+								<span class="dashicons dashicons-info" title="' . esc_attr__('A cookie is set in the visitor\'s browser after the first redirect. The visitor will not be redirected again until the cookie expires.', 'ip2location-redirection') . '" style="cursor:help;vertical-align:middle;color:#666;"></span>
+							</label>
+						</td>
+					</tr>
+					<tr>
+						<td>
+							<label for="first_redirect_cookie_lifetime">
+								' . __('Cookie lifetime', 'ip2location-redirection') . '
+								' . $cookie_lifetime_select . '
 							</label>
 						</td>
 					</tr>
@@ -1855,7 +1885,8 @@ class IP2LocationRedirection
 
 		$time = time();
 
-		setcookie('ip2location_redirection_first_visit', $time . ';' . md5($time . 'a09f0749-6683-5ada-882c-eb3263a252d3'), strtotime('+24 hours'), '/', '', true, true);
+		$expires = strtotime($this->get_option('first_redirect_cookie_lifetime') ?: '1 day');
+		setcookie('ip2location_redirection_first_visit', $time . ';' . md5($time . 'a09f0749-6683-5ada-882c-eb3263a252d3'), $expires, '/', '', true, true);
 
 		if (($rules = json_decode($this->get_option('rules'))) !== null) {
 			$result = $this->get_location($this->ip());
@@ -1980,28 +2011,28 @@ class IP2LocationRedirection
 							$target_url = $this->get_permalink($page_id);
 
 							if ($wpml_code) {
-								$translated_id = apply_filters("wpml_object_id", $page_id, get_post_type($page_id), true, $wpml_code);
+								$translated_id = apply_filters('wpml_object_id', $page_id, get_post_type($page_id), true, $wpml_code);
 								if ($translated_id) {
 									$target_url = $this->get_permalink($translated_id);
-									$wpml_settings = get_option("icl_sitepress_settings");
-									if (isset($wpml_settings["language_negotiation_type"]) && $wpml_settings["language_negotiation_type"] == 1 && $wpml_code !== ($wpml_settings["default_language"] ?? "")) {
-										if (strpos($target_url, "://") === false) {
-											$target_url = "/" . $wpml_code . $target_url;
+									$wpml_settings = get_option('icl_sitepress_settings');
+									if (isset($wpml_settings['language_negotiation_type']) && $wpml_settings['language_negotiation_type'] == 1 && $wpml_code !== ($wpml_settings['default_language'] ?? '')) {
+										if (strpos($target_url, '://') === false) {
+											$target_url = '/' . $wpml_code . $target_url;
 										} else {
 											$parts = parse_url($target_url);
-											$parts["path"] = "/" . $wpml_code . ($parts["path"] ?? "/");
-											$target_url = $this->build_url($parts["scheme"], $parts["host"], $parts["path"], []);
+											$parts['path'] = '/' . $wpml_code . ($parts['path'] ?? '/');
+											$target_url = $this->build_url($parts['scheme'], $parts['host'], $parts['path'], []);
 										}
-									} elseif (isset($wpml_settings["language_negotiation_type"]) && $wpml_settings["language_negotiation_type"] == 3) {
-										$target_url .= ((strpos($target_url, "?") === false) ? "?" : "&") . "lang=" . $wpml_code;
+									} elseif (isset($wpml_settings['language_negotiation_type']) && $wpml_settings['language_negotiation_type'] == 3) {
+										$target_url .= ((strpos($target_url, '?') === false) ? '?' : '&') . 'lang=' . $wpml_code;
 									}
 								}
 							}
 
 							// Normalize to full URL
-							if (strpos($target_url, "://") === false && $this->http_host()) {
+							if (strpos($target_url, '://') === false && $this->http_host()) {
 								$parts = parse_url($this->get_current_url());
-								$target_url = $this->build_url($parts["scheme"], $parts["host"], $target_url, []);
+								$target_url = $this->build_url($parts['scheme'], $parts['host'], $target_url, []);
 							}
 
 							// Prevent infinite loop
@@ -2018,7 +2049,7 @@ class IP2LocationRedirection
 						if (substr($url_from, 0, 1) == '*') {
 							if (substr($url_from, 1) == $this->http_host()) {
 								$this->write_debug_log('Domain "' . $url_from . '" matched "' . $this->http_host() . '".', 'MATCHED');
-								$target_url = str_replace(substr($url_from, 1), $url_to . ((!empty($new_parameter) ? (((strpos($url_to, "?") === false) ? "?" : "&") . $new_parameter) : "")), $this->get_current_url());
+								$target_url = str_replace(substr($url_from, 1), $url_to . ((!empty($new_parameter) ? (((strpos($url_to, '?') === false) ? '?' : '&') . $new_parameter) : '')), $this->get_current_url());
 								if ($this->normalize_url($this->get_current_url()) === $this->normalize_url($target_url)) {
 									return;
 								}
@@ -2029,7 +2060,7 @@ class IP2LocationRedirection
 						} else {
 							if ($url_from == $this->http_host()) {
 								$this->write_debug_log('Domain "' . $url_from . '" matched "' . $this->http_host() . '".', 'MATCHED');
-								$target_url = str_replace($url_from, $url_to . ((!empty($new_parameter) ? ("?" . $new_parameter) : "")), $this->get_current_url(false));
+								$target_url = str_replace($url_from, $url_to . ((!empty($new_parameter) ? ('?' . $new_parameter) : '')), $this->get_current_url(false));
 								if ($this->normalize_url($this->get_current_url()) === $this->normalize_url($target_url)) {
 									return;
 								}
@@ -2102,20 +2133,20 @@ class IP2LocationRedirection
 						$target_url = $this->get_permalink($page_id);
 
 						if ($wpml_code) {
-							$translated_id = apply_filters("wpml_object_id", $page_id, get_post_type($page_id), true, $wpml_code);
+							$translated_id = apply_filters('wpml_object_id', $page_id, get_post_type($page_id), true, $wpml_code);
 							if ($translated_id) {
 								$target_url = $this->get_permalink($translated_id);
-								$wpml_settings = get_option("icl_sitepress_settings");
-								if (isset($wpml_settings["language_negotiation_type"]) && $wpml_settings["language_negotiation_type"] == 1 && $wpml_code !== ($wpml_settings["default_language"] ?? "")) {
-									if (strpos($target_url, "://") === false) {
-										$target_url = "/" . $wpml_code . $target_url;
+								$wpml_settings = get_option('icl_sitepress_settings');
+								if (isset($wpml_settings['language_negotiation_type']) && $wpml_settings['language_negotiation_type'] == 1 && $wpml_code !== ($wpml_settings['default_language'] ?? '')) {
+									if (strpos($target_url, '://') === false) {
+										$target_url = '/' . $wpml_code . $target_url;
 									} else {
 										$parts = parse_url($target_url);
-										$parts["path"] = "/" . $wpml_code . ($parts["path"] ?? "/");
-										$target_url = $this->build_url($parts["scheme"], $parts["host"], $parts["path"], []);
+										$parts['path'] = '/' . $wpml_code . ($parts['path'] ?? '/');
+										$target_url = $this->build_url($parts['scheme'], $parts['host'], $parts['path'], []);
 									}
-								} elseif (isset($wpml_settings["language_negotiation_type"]) && $wpml_settings["language_negotiation_type"] == 3) {
-									$target_url .= ((strpos($target_url, "?") === false) ? "?" : "&") . "lang=" . $wpml_code;
+								} elseif (isset($wpml_settings['language_negotiation_type']) && $wpml_settings['language_negotiation_type'] == 3) {
+									$target_url .= ((strpos($target_url, '?') === false) ? '?' : '&') . 'lang=' . $wpml_code;
 								}
 							}
 						}
@@ -2203,20 +2234,20 @@ class IP2LocationRedirection
 							$post_url = $this->get_permalink($page_id);
 
 							if ($wpml_code) {
-								$translated_id = apply_filters("wpml_object_id", $page_id, get_post_type($page_id), true, $wpml_code);
+								$translated_id = apply_filters('wpml_object_id', $page_id, get_post_type($page_id), true, $wpml_code);
 								if ($translated_id) {
 									$post_url = $this->get_permalink($translated_id);
-									$wpml_settings = get_option("icl_sitepress_settings");
-									if (isset($wpml_settings["language_negotiation_type"]) && $wpml_settings["language_negotiation_type"] == 1 && $wpml_code !== ($wpml_settings["default_language"] ?? "")) {
-										if (strpos($post_url, "://") === false) {
-											$post_url = "/" . $wpml_code . $post_url;
+									$wpml_settings = get_option('icl_sitepress_settings');
+									if (isset($wpml_settings['language_negotiation_type']) && $wpml_settings['language_negotiation_type'] == 1 && $wpml_code !== ($wpml_settings['default_language'] ?? '')) {
+										if (strpos($post_url, '://') === false) {
+											$post_url = '/' . $wpml_code . $post_url;
 										} else {
 											$parts = parse_url($post_url);
-											$parts["path"] = "/" . $wpml_code . ($parts["path"] ?? "/");
-											$post_url = $this->build_url($parts["scheme"], $parts["host"], $parts["path"], []);
+											$parts['path'] = '/' . $wpml_code . ($parts['path'] ?? '/');
+											$post_url = $this->build_url($parts['scheme'], $parts['host'], $parts['path'], []);
 										}
-									} elseif (isset($wpml_settings["language_negotiation_type"]) && $wpml_settings["language_negotiation_type"] == 3) {
-										$post_url .= ((strpos($post_url, "?") === false) ? "?" : "&") . "lang=" . $wpml_code;
+									} elseif (isset($wpml_settings['language_negotiation_type']) && $wpml_settings['language_negotiation_type'] == 3) {
+										$post_url .= ((strpos($post_url, '?') === false) ? '?' : '&') . 'lang=' . $wpml_code;
 									}
 								}
 							}
@@ -2246,20 +2277,20 @@ class IP2LocationRedirection
 						$link = $this->get_permalink($page_id);
 
 						if ($wpml_code) {
-							$translated_id = apply_filters("wpml_object_id", $page_id, get_post_type($page_id), true, $wpml_code);
+							$translated_id = apply_filters('wpml_object_id', $page_id, get_post_type($page_id), true, $wpml_code);
 							if ($translated_id) {
 								$link = $this->get_permalink($translated_id);
-								$wpml_settings = get_option("icl_sitepress_settings");
-								if (isset($wpml_settings["language_negotiation_type"]) && $wpml_settings["language_negotiation_type"] == 1 && $wpml_code !== ($wpml_settings["default_language"] ?? "")) {
-									if (strpos($link, "://") === false) {
-										$link = "/" . $wpml_code . $link;
+								$wpml_settings = get_option('icl_sitepress_settings');
+								if (isset($wpml_settings['language_negotiation_type']) && $wpml_settings['language_negotiation_type'] == 1 && $wpml_code !== ($wpml_settings['default_language'] ?? '')) {
+									if (strpos($link, '://') === false) {
+										$link = '/' . $wpml_code . $link;
 									} else {
 										$parts = parse_url($link);
-										$parts["path"] = "/" . $wpml_code . ($parts["path"] ?? "/");
-										$link = $this->build_url($parts["scheme"], $parts["host"], $parts["path"], []);
+										$parts['path'] = '/' . $wpml_code . ($parts['path'] ?? '/');
+										$link = $this->build_url($parts['scheme'], $parts['host'], $parts['path'], []);
 									}
-								} elseif (isset($wpml_settings["language_negotiation_type"]) && $wpml_settings["language_negotiation_type"] == 3) {
-									$link .= ((strpos($link, "?") === false) ? "?" : "&") . "lang=" . $wpml_code;
+								} elseif (isset($wpml_settings['language_negotiation_type']) && $wpml_settings['language_negotiation_type'] == 3) {
+									$link .= ((strpos($link, '?') === false) ? '?' : '&') . 'lang=' . $wpml_code;
 								}
 							}
 						}
@@ -2421,24 +2452,24 @@ class IP2LocationRedirection
 	private function normalize_url($url)
 	{
 		// Convert relative URLs to absolute for comparison
-		if (strpos($url, "://") === false) {
+		if (strpos($url, '://') === false) {
 			$parts = parse_url($this->get_current_url());
-			if ($parts === false || !isset($parts["scheme"]) || !isset($parts["host"])) {
+			if ($parts === false || !isset($parts['scheme']) || !isset($parts['host'])) {
 				return $url;
 			}
-			$url = $parts["scheme"] . "://" . $parts["host"] . "/" . ltrim($url, "/");
+			$url = $parts['scheme'] . '://' . $parts['host'] . '/' . ltrim($url, '/');
 		}
 
 		$parsed = parse_url($url);
-		if ($parsed === false || !isset($parsed["host"])) {
+		if ($parsed === false || !isset($parsed['host'])) {
 			return $url;
 		}
 
-		$scheme = $parsed["scheme"] ?? "https";
-		$host = $parsed["host"];
-		$path = $parsed["path"] ?? "/";
+		$scheme = $parsed['scheme'] ?? 'https';
+		$host = $parsed['host'];
+		$path = $parsed['path'] ?? '/';
 
-		return rtrim($scheme . "://" . $host . $path, "/");
+		return rtrim($scheme . '://' . $host . $path, '/');
 	}
 
 	private function wpdb_query($query, ...$args)
@@ -3425,4 +3456,3 @@ class IP2LocationRedirection
 		return number_format((float) $bytes, 0, '.', ',') . ' ' . $ext[$index];
 	}
 }
-
