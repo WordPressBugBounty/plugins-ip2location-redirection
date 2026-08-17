@@ -4,7 +4,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.41.1
+ * Version: 1.41.2
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -179,39 +179,58 @@ class IP2LocationRedirection
 
 	public function plugin_enqueues($hook)
 	{
-		wp_enqueue_style('iplr-styles', untrailingslashit(plugins_url('/', __FILE__)) . '/assets/css/styles.css', []);
+		// Deactivation feedback modal on the Plugins screen (only those assets).
+		if ($hook == 'plugins.php') {
+			wp_enqueue_script('jquery-ui-dialog');
+			wp_enqueue_style('wp-jquery-ui-dialog');
+			wp_enqueue_script('iplr-feedback-js', plugins_url('/assets/js/feedback.js', __FILE__), ['jquery'], null, true);
 
-		switch ($hook) {
-			case 'plugins.php':
-				wp_enqueue_script('jquery-ui-dialog');
-				wp_enqueue_style('wp-jquery-ui-dialog');
+			return;
+		}
 
-				wp_enqueue_script('iplr-feedback-js', plugins_url('/assets/js/feedback.js', __FILE__), ['jquery'], null, true);
+		// Identify the page from the menu slug (the "page" query argument) rather
+		// than the admin_enqueue_scripts $hook: WordPress derives the submenu hook
+		// suffix prefix from sanitize_title( $menu_title ), so it changes with the
+		// admin locale (e.g. "redirection_page_..." vs "doorverwijzing_page_...").
+		$page = $this->get('page');
 
-				break;
+		$pages = [
+			'ip2location-redirection'            => 'rules',
+			'ip2location-redirection-ip-lookup'  => 'ip-lookup',
+			'ip2location-redirection-settings'   => 'settings',
+		];
 
-			case 'toplevel_page_ip2location-redirection':
-				add_action('wp_enqueue_script', 'load_jquery');
+		if (!isset($pages[$page])) {
+			return;
+		}
 
+		$page = $pages[$page];
+
+		// Shared stylesheet, scoped to the plugin's own pages only.
+		wp_enqueue_style('iplr-styles', untrailingslashit(plugins_url('/', __FILE__)) . '/assets/css/styles.css');
+
+		switch ($page) {
+			case 'rules':
 				wp_enqueue_script('iplr-rules-js', plugins_url('/assets/js/rules.js?t=' . microtime(true), __FILE__), ['jquery'], null, true);
-				wp_enqueue_script('iplr-chosen-js', 'https://cdnjs.cloudflare.com/ajax/libs/chosen/1.7.0/chosen.jquery.min.js', [], null, true);
-				wp_enqueue_script('iplr-tagsinput-js', plugins_url('/assets/js/jquery.tagsinput.min.js', __FILE__), [], null, true);
-				wp_enqueue_script('iplr-jquery-ui', plugins_url('/assets/js/jquery-ui.min.js', __FILE__), [], null, true);
+				wp_enqueue_script('iplr-chosen-js', plugins_url('/assets/js/chosen.jquery.min.js', __FILE__), ['jquery'], null, true);
+				wp_enqueue_script('iplr-tagsinput-js', plugins_url('/assets/js/jquery.tagsinput.min.js', __FILE__), ['jquery'], null, true);
+				wp_enqueue_script('iplr-jquery-ui', plugins_url('/assets/js/jquery-ui.min.js', __FILE__), ['jquery'], null, true);
 
-				wp_enqueue_style('iplr-chosen-css', esc_url_raw('https://cdnjs.cloudflare.com/ajax/libs/chosen/1.7.0/chosen.min.css'), [], null);
-				wp_enqueue_style('iplr-tagsinput-css', esc_url_raw('https://cdnjs.cloudflare.com/ajax/libs/jquery-tagsinput/1.3.6/jquery.tagsinput.min.css'), [], null);
-				wp_enqueue_style('iplr-custom-styles', untrailingslashit(plugins_url('/', __FILE__)) . '/assets/css/customs.css', []);
+				wp_enqueue_style('iplr-chosen-css', plugins_url('/assets/css/chosen.min.css', __FILE__), [], null);
+				wp_enqueue_style('iplr-tagsinput-css', plugins_url('/assets/css/jquery.tagsinput.min.css', __FILE__), [], null);
+				wp_enqueue_style('iplr-custom-styles', untrailingslashit(plugins_url('/', __FILE__)) . '/assets/css/customs.css');
 
 				break;
 
-			case 'redirection_page_ip2location-redirection-settings':
-				wp_register_script('iplr-jquery-upload-file-js', 'https://cdnjs.cloudflare.com/ajax/libs/jquery-file-upload/4.0.11/jquery.uploadfile.min.js', null, null, true);
-				wp_enqueue_script('iplr-jquery-upload-file-js');
+			case 'ip-lookup':
+				break;
 
-				wp_register_style('iplr-jquery-upload-file-css', 'https://cdnjs.cloudflare.com/ajax/libs/jquery-file-upload/4.0.11/uploadfile.min.css');
-				wp_enqueue_style('iplr-jquery-upload-file-css');
+			case 'settings':
+				wp_enqueue_script('jquery-form');
+				wp_enqueue_script('iplr-jquery-upload-file-js', plugins_url('/assets/js/jquery.uploadfile.min.js', __FILE__), ['jquery', 'jquery-form'], null, true);
+				wp_enqueue_style('iplr-jquery-upload-file-css', plugins_url('/assets/css/uploadfile.min.css', __FILE__), [], null);
+				wp_enqueue_script('iplr_admin_script_js', plugins_url('/assets/js/settings.js', __FILE__), ['jquery', 'iplr-jquery-upload-file-js'], null, true);
 
-				wp_enqueue_script('iplr_admin_script_js', plugins_url('/assets/js/settings.js', __FILE__), ['jquery'], null, true);
 				break;
 		}
 	}
