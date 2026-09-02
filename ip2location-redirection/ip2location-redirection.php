@@ -4,7 +4,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.41.4
+ * Version: 1.42.0
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -52,7 +52,7 @@ class IP2LocationRedirection
 	];
 
 	private $allowed_options = [
-		'api_key', 'auto_update', 'database', 'debug_log_enabled', 'download_ipv4_only', 'enable_region_redirect', 'enabled', 'first_redirect', 'first_redirect_cookie_lifetime', 'ignore_query_string', 'ip_whitelist', 'lookup_mode', 'noredirect_enabled', 'private_key', 'real_ip_header', 'rules', 'session_message', 'skip_admins', 'skip_bots', 'skip_ai_bots', 'token'
+		'api_key', 'auto_update', 'database', 'debug_log_enabled', 'download_ipv4_only', 'enable_region_redirect', 'enabled', 'first_redirect', 'first_redirect_cookie_lifetime', 'ignore_query_string', 'ip_whitelist', 'lookup_mode', 'noredirect_enabled', 'private_key', 'real_ip_header', 'rules', 'session_message', 'skip_admins', 'skip_bots', 'skip_ai_bots', 'token', 'trust_x_forwarded_for'
 	];
 
 	private $debug_log = '';
@@ -253,6 +253,7 @@ class IP2LocationRedirection
 		add_option('ip2location_redirection_noredirect_enabled', '0');
 		add_option('ip2location_redirection_private_key', '');
 		add_option('ip2location_redirection_real_ip_header', '');
+		add_option('ip2location_redirection_trust_x_forwarded_for', '0');
 		add_option('ip2location_redirection_rules', '[]');
 		add_option('ip2location_redirection_session_message', '');
 		add_option('ip2location_redirection_skip_admins', '1');
@@ -1423,6 +1424,7 @@ class IP2LocationRedirection
 		$download_ipv4_only = $this->is_checked('download_ipv4_only', $this->get_option('download_ipv4_only'));
 		$enable_debug_log = $this->is_checked('enable_debug_log', $this->get_option('debug_log_enabled'));
 		$real_ip_header = $this->post('real_ip_header', $this->get_option('real_ip_header'));
+		$trust_x_forwarded_for = $this->is_checked('trust_x_forwarded_for', $this->get_option('trust_x_forwarded_for'));
 		$enable_auto_update = $this->is_checked('enable_auto_update', $this->get_option('auto_update'));
 
 		if (!in_array($real_ip_header, array_values($real_ip_headers))) {
@@ -1521,6 +1523,7 @@ class IP2LocationRedirection
 				$this->update_option('debug_log_enabled', $enable_debug_log);
 				$this->update_option('download_ipv4_only', $download_ipv4_only);
 				$this->update_option('real_ip_header', $real_ip_header);
+				$this->update_option('trust_x_forwarded_for', $trust_x_forwarded_for);
 				$this->update_option('auto_update', $enable_auto_update);
 
 				$settings_status .= '
@@ -1742,6 +1745,14 @@ class IP2LocationRedirection
 
 		echo '
 							</select>
+							<p>
+								<label for="trust_x_forwarded_for">
+									<input type="checkbox" name="trust_x_forwarded_for" id="trust_x_forwarded_for" value="1"' . (($trust_x_forwarded_for == 1) ? ' checked' : '') . ' /> ' . __('Trust the X-Forwarded-For header to detect the visitor IP', 'ip2location-redirection') . '
+									<p class="description">
+										' . __('Only detect the visitor IP from the X-Forwarded-For header when this option is enabled. Keep it disabled to always use the direct connection IP (REMOTE_ADDR) and ignore spoofed proxy headers.', 'ip2location-redirection') . '
+									</p>
+								</label>
+							</p>
 							<p class="description">
 								' . __('If your WordPress is installed behind a reverse proxy or load balancer, the real IP address of the visitors may not forwarded correctly and causing inaccurate country results. Use this option to override the IP detected by IP2Location.', 'ip2location-redirection') . '
 							</p>
@@ -2690,6 +2701,11 @@ class IP2LocationRedirection
 
 	private function ip()
 	{
+		// Only trust forwarded headers (X-Forwarded-For etc.) to reveal the real visitor IP when explicitly enabled.
+		if ($this->get_option('trust_x_forwarded_for') !== '1') {
+			return $_SERVER['REMOTE_ADDR'];
+		}
+
 		if ($this->get_option('real_ip_header')) {
 			return $_SERVER[$this->get_option('real_ip_header')] ?? $_SERVER['REMOTE_ADDR'];
 		}

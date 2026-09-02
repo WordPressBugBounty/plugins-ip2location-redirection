@@ -18,6 +18,7 @@ delete_option('ip2location_redirection_lookup_mode');
 delete_option('ip2location_redirection_noredirect_enabled');
 delete_option('ip2location_redirection_private_key');
 delete_option('ip2location_redirection_real_ip_header');
+delete_option('ip2location_redirection_trust_x_forwarded_for');
 delete_option('ip2location_redirection_rules');
 delete_option('ip2location_redirection_session_message');
 delete_option('ip2location_redirection_skip_admins');
