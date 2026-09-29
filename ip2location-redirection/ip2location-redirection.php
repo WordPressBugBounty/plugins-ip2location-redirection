@@ -4,7 +4,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.42.1
+ * Version: 1.42.2
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -47,10 +47,7 @@ add_action('init', [$ip2location_redirection, 'prune_cache'], 2);
 
 class IP2LocationRedirection
 {
-	// Lookup-cache housekeeping. A per-visitor JSON file is written for every
-	// distinct IP, so the directory needs a hard ceiling as well as a TTL:
-	// a TTL alone leaves the file count unbounded on a busy site (and can
-	// exhaust the host's inode quota).
+	// Cache limits: maximum files kept and entry lifetime (hours).
 	const CACHE_MAX_FILES = 10000;
 	const CACHE_TTL_HOURS = 6;
 
@@ -198,10 +195,7 @@ class IP2LocationRedirection
 			return;
 		}
 
-		// Identify the page from the menu slug (the "page" query argument) rather
-		// than the admin_enqueue_scripts $hook: WordPress derives the submenu hook
-		// suffix prefix from sanitize_title( $menu_title ), so it changes with the
-		// admin locale (e.g. "redirection_page_..." vs "doorverwijzing_page_...").
+		// Identify the page from the menu slug (the hook suffix is locale-dependent).
 		$page = $this->get('page');
 
 		$pages = [
@@ -2444,15 +2438,7 @@ class IP2LocationRedirection
 		return $footer_text;
 	}
 
-	/**
-	 * (Re)register the maintenance cron events.
-	 *
-	 * Called on every load, not just on activation: register_activation_hook()
-	 * does not fire when a plugin is *updated*, so a site that upgraded into a
-	 * version carrying these events - or whose cron array was reset by a
-	 * migration or restore - would never schedule them and the cache directory
-	 * would grow without bound.
-	 */
+	// Register the maintenance cron (in case it was lost).
 	public function schedule_events()
 	{
 		if (!wp_next_scheduled('ip2location_redirection_hourly_event')) {
@@ -2464,14 +2450,7 @@ class IP2LocationRedirection
 		}
 	}
 
-	/**
-	 * Opportunistic cleanup for sites where WP-Cron is disabled or unreachable.
-	 *
-	 * Runs at most once an hour and only on front-end requests, with a small
-	 * deletion budget, so a single visitor never pays for clearing a large
-	 * backlog. Together with schedule_events() this keeps the cache bounded
-	 * whether or not WP-Cron runs.
-	 */
+	// Fallback cleanup when WP-Cron never runs.
 	public function prune_cache()
 	{
 		if (is_admin() || (defined('WP_CLI') && WP_CLI)) {
@@ -2746,7 +2725,7 @@ class IP2LocationRedirection
 
 	private function ip()
 	{
-		// Only trust forwarded headers (X-Forwarded-For etc.) to reveal the real visitor IP when explicitly enabled.
+		// Trust forwarded headers only when explicitly enabled.
 		if ($this->get_option('trust_x_forwarded_for') !== '1') {
 			return $_SERVER['REMOTE_ADDR'];
 		}
@@ -3383,15 +3362,7 @@ class IP2LocationRedirection
 		return null;
 	}
 
-	/**
-	 * Remove expired cache files and enforce the hard file-count ceiling.
-	 *
-	 * Growth is bounded two ways: entries older than $ttl_hours are dropped, and
-	 * the directory is never allowed to hold more than CACHE_MAX_FILES entries
-	 * (oldest evicted first). Deletions per run are capped by $budget so that a
-	 * directory which has already grown huge cannot exhaust the request's
-	 * time/memory limit - repeated runs converge on the target size.
-	 */
+	// Drop expired files, then trim to the ceiling (oldest first).
 	private function cache_clear($ttl_hours = self::CACHE_TTL_HOURS, $budget = 20000)
 	{
 		$dir = IP2LOCATION_DIR . 'caches' . \DIRECTORY_SEPARATOR;
@@ -3454,14 +3425,7 @@ class IP2LocationRedirection
 		}
 	}
 
-	/**
-	 * Delete a single cache file.
-	 *
-	 * WP_Filesystem() returns false when it cannot resolve a direct filesystem
-	 * method (which happens in some cron/AJAX contexts), leaving $wp_filesystem
-	 * null - calling delete() on it is a fatal error that silently kills the
-	 * cleanup job. Fall back to unlink() in that case.
-	 */
+	// WP_Filesystem() can fail to init; fall back to unlink().
 	private function cache_delete($path)
 	{
 		require_once ABSPATH . 'wp-admin/includes/file.php';
