@@ -42,6 +42,17 @@ jQuery(document).ready(function ($) {
 		var last_access = ('last_access' in inputs) ? inputs.last_access : '';
 		var status = ('status' in inputs) ? inputs.status : true;
 
+		const country_groups = {
+			"EU": "European Union (group)",
+			"EMEA": "EMEA (group)",
+			"APAC": "APAC (group)",
+			"ASEAN": "ASEAN (group)",
+			"BRIC": "BRIC (group)",
+			"BRICS": "BRICS (group)",
+			"EAC": "EAC (group)",
+			"EFTA": "EFTA (group)"
+		};
+
 		const countries = {
 			"": "",
 			"ANY": "Any Country",
@@ -3980,7 +3991,6 @@ jQuery(document).ready(function ($) {
 				var hasAny = selected.indexOf('ANY') !== -1;
 				var hasOther = selected.some(function(code) { return code !== '' && code !== 'ANY'; });
 
-				// If "Any Country" is selected with other countries, keep only "Any Country"
 				if (hasAny && hasOther) {
 					selected = ['ANY'];
 					$(this).val(selected);
@@ -4040,6 +4050,10 @@ jQuery(document).ready(function ($) {
 			}
 		});
 
+		$.each(country_groups, function (group_code, group_name) {
+			$country_list.append('<option value="' + group_code + '"' + ((codes.indexOf(group_code) != -1) ? ' selected' : '') + '>' + group_name + '</option>');
+		});
+
 		$.each(countries, function (iso_code, country_name) {
 			$country_list.append('<option value="' + iso_code + '"' + ((codes.indexOf(iso_code) != -1) ? ' selected' : '') + '>' + country_name + '</option>');
 
@@ -4083,6 +4097,10 @@ jQuery(document).ready(function ($) {
 				if ($(this).attr('data-prev') == 'domain') {
 					$(this).parent().parent().find('.redirect-to').val('');
 					$('.chosen').trigger('chosen:updated');
+				}
+
+				if (['url', 'domain'].indexOf($(this).attr('data-prev')) != -1 && ['url', 'domain'].indexOf($(this).val()) != -1) {
+					$(this).parent().find('.url-container input, .domain-container input').val('');
 				}
 
 				if ($(this).val() == 'url') {
@@ -4145,6 +4163,10 @@ jQuery(document).ready(function ($) {
 				if ($(this).attr('data-prev') == 'domain') {
 					$(this).parent().parent().find('.redirect-from').val('').trigger('change');
 					$('.chosen').trigger('chosen:updated');
+				}
+
+				if (['url', 'domain'].indexOf($(this).attr('data-prev')) != -1 && ['url', 'domain'].indexOf($(this).val()) != -1) {
+					$(this).parent().find('.url-container input, .domain-container input').val('');
 				}
 
 				if ($(this).val() == 'url') {
@@ -4259,6 +4281,11 @@ jQuery(document).ready(function ($) {
 
 		$div_spacer = $('<div class="spacer" style="min-height: 100px;">');
 
+		var placeholder_help = '<p class="description iplr-placeholder-help">'
+			+ '<strong>Placeholders:</strong> <code>{{country_code}}</code> <code>{{country_name}}</code> <code>{{region}}</code> <code>{{region_code}}</code> <code>{{language}}</code> <code>{{requested_path}}</code> <code>{{last_path}}</code> <code>{{query_string}}</code> <code>{{host}}</code> <code>{{requested_uri}}</code>'
+			+ '<br>Example: <code>/{{language}}/{{requested_path}}/</code>'
+			+ '</p>';
+
 		var $rule = $('<tr>')
 			.append($('<td style="position: relative;">').append($country_list).append('<input type="hidden" name="country_codes[]" value="' + country_codes + '" class="country_codes">').append($('<p />').append($('<label />').append($exclude_checkbox).append($exclude_input).append(' Redirect all <strong>except</strong> locations listed above.')).append($div_spacer).append($div_statistics)))
 			.append($('<td>').append($from_list)
@@ -4269,8 +4296,10 @@ jQuery(document).ready(function ($) {
 			)
 			.append($('<td>')
 				.append($destination_list)
-				.append('<div class="url-container to-container" style="display:' + ((to == 'url') ? 'block' : 'none') + '"><input type="text" name="url_to[]" value="' + url_to + '" class="url regular-text" placeholder="https://www.example.com" maxlength="255" /></div>')
-				.append('<div class="domain-container to-container" style="display:' + ((to == 'domain') ? 'block' : 'none') + '"><input type="text" name="domain_to[]" value="' + url_to + '" class="domain regular-text" placeholder="example.com" maxlength="255" /></div>')
+				.append($('<div class="url-container to-container" style="display:' + ((to == 'url') ? 'block' : 'none') + '">')
+					.append('<input type="text" name="url_to[]" value="' + url_to + '" class="url regular-text" placeholder="https://www.example.com" maxlength="255" />')
+					.append(placeholder_help))
+				.append('<div class="domain-container to-container" style="display:' + ((to == 'domain') ? 'block' : 'none') + '"><input type="text" name="domain_to[]" value="' + url_to + '" class="domain regular-text" placeholder="example.com" maxlength="255" />' + placeholder_help + '</div>')
 				.append($('<div class="post-container to-container" style="display:' + ((to.substr(0, 4) == 'post' || to.substr(0, 4) == 'page') ? 'block' : 'none') + '">').append($post_to_list))
 				.append('<div class="wpml-container to-container" style="display:' + ((to.substr(0, 4) == 'post' || to.substr(0, 4) == 'page') ? 'block' : 'none') + '"><label>WPML Language Code:</label><input type="text" name="wpml_code[]" value="' + language_code + '" class="wpml-codes regular-text" maxlength="10"' + ((wpml_installed) ? '' : ' disabled') + ' /><br><small>Enter a <a href="https://wpml.org/" target="_blank">WPML</a> language code to translate destination page.' + ((!wpml_installed) ? ' [Not installed]' : '') + '</small></div>')
 				.append($div_parameter)
@@ -4381,15 +4410,13 @@ jQuery(document).ready(function ($) {
 		insert_rule();
 	}
 
-	//for wizard
 	$('#btn-get-started').on('click', function (e) {
 		e.preventDefault();
 
 		$('#modal-get-started').css('display', 'none');
-		$('#modal-step-1').css('display', 'block'); //go to query selection page
+		$('#modal-step-1').css('display', 'block'); 
 	});
 
-	//if query selection is made
 	$('#btn-to-step-1').on('click', function (e) {
 		e.preventDefault();
 		var sel = $('input[name="ipl-sel"]:checked').val();
@@ -4404,7 +4431,6 @@ jQuery(document).ready(function ($) {
 		}
 	});
 
-	//db
 	$('#btn-to-db-step-0').on('click', function (e) {
 		e.preventDefault();
 
@@ -4485,7 +4511,6 @@ jQuery(document).ready(function ($) {
 		$btn.prop('disabled', true);
 		$('#api_status').html('<span class="dashicons dashicons-update spin"></span> Validating API key...');
 
-		// Validate IP2Location.io API key
 		$.post(
 			ajaxurl,
 			{

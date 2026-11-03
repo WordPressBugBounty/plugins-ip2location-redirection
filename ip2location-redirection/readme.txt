@@ -1,10 +1,12 @@
 === IP2Location Redirection ===
 Contributors: IP2Location
 Donate link: https://www.ip2location.com
-Tags: ip2location, country redirection, website redirect, page redirector, redirection, targeted content, ip address, 301, 302, country, ipv4, ipv6, geolocation
+Tags: ip2location, country redirection, website redirect, page redirector, redirection
 Requires at least: 4.6
 Tested up to: 7.1
-Stable tag: 1.42.2
+Stable tag: 1.43.0
+License: GPLv2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 Redirects visitors to a blog page or a predefined URL based on their country and region geolocated using IP address.
 
@@ -62,6 +64,9 @@ Send us an email at support@ip2location.com
 1. Redirect visitor from California and New York to https://google.com.
 
 == Changelog ==
+* 1.43.0 Added country groups in rules, added placeholders in destination URLs with an inline guide, further optimize statistics and settings pages.
+* 1.42.4 Fixed the settings page markup so the admin footer stays at the bottom.
+* 1.42.3 Passed WordPress Plugin Check: escaped output, translators comments, input sanitisation, deprecated functions replaced.
 * 1.42.2 Fixed some potential PHP warnings.
 * 1.42.1 Improve cache cleaning process.
 * 1.42.0 Added option to trust the X-Forwarded-For header to detect the visitor IP (disabled by default).
