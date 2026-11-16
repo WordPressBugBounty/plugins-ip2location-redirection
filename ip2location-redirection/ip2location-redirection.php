@@ -4,7 +4,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.43.0
+ * Version: 1.43.1
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -123,7 +123,7 @@ class IP2LocationRedirection {
 	}
 
 	public function add_admin_menu() {
-		add_menu_page( __( 'Redirection', 'ip2location-redirection' ), __( 'Redirection', 'ip2location-redirection' ), 'manage_options', 'ip2location-redirection', array( $this, 'rules_page' ), 'dashicons-admin-ip2location', 31 );
+		add_menu_page( __( 'Redirection', 'ip2location-redirection' ), __( 'Redirection', 'ip2location-redirection' ), 'manage_options', 'ip2location-redirection', array( $this, 'rules_page' ), plugins_url( '/assets/img/icon.svg', __FILE__ ), 31 );
 		add_submenu_page( 'ip2location-redirection', __( 'Rules', 'ip2location-redirection' ), __( 'Rules', 'ip2location-redirection' ), 'manage_options', 'ip2location-redirection', array( $this, 'rules_page' ) );
 		add_submenu_page( 'ip2location-redirection', __( 'Statistics', 'ip2location-redirection' ), __( 'Statistics', 'ip2location-redirection' ), 'manage_options', 'ip2location-redirection-statistics', array( $this, 'statistics_page' ) );
 		add_submenu_page( 'ip2location-redirection', __( 'IP Lookup', 'ip2location-redirection' ), __( 'IP Lookup', 'ip2location-redirection' ), 'manage_options', 'ip2location-redirection-ip-lookup', array( $this, 'ip_lookup_page' ) );
@@ -803,7 +803,7 @@ class IP2LocationRedirection {
 					$country_codes  = explode( ',', $country_codes );
 					$rule_status    = $this->post( 'rule_status' )[ $index ] ?? '';
 					$status_code    = $this->post( 'status_code' )[ $index ] ?? '';
-					$wpml_code      = $this->post( 'wpml_code' )[ $index ] ?? '';
+					$wpml_code      = strtolower( trim( (string) ( $this->post( 'wpml_code' )[ $index ] ?? '' ) ) );
 					$from           = $this->post( 'from' )[ $index ] ?? '';
 					$to             = $this->post( 'to' )[ $index ] ?? '';
 					$post_from      = $this->post( 'post_from' )[ $index ] ?? '';
@@ -2292,7 +2292,7 @@ class IP2LocationRedirection {
 				$path_mode      = $rules[ $i ]->path_mode ?? 'exact';
 				$path_keyword   = $rules[ $i ]->path_keyword ?? '';
 				$new_parameter  = $rules[ $i ]->new_parameter ?? '';
-				$wpml_code      = $rules[ $i ]->language_code ?? '';
+				$wpml_code      = strtolower( trim( (string) ( $rules[ $i ]->language_code ?? '' ) ) );
 				$http_code      = $rules[ $i ]->http_code ?? 302;
 				$dialog_message = $rules[ $i ]->dialog_message ?? '';
 
@@ -2390,26 +2390,10 @@ class IP2LocationRedirection {
 								return;
 							}
 
-							$target_url = $this->get_permalink( $page_id );
+							$target_url = $this->get_wpml_target( $page_id, $wpml_code );
 
-							if ( $wpml_code ) {
-
-								$translated_id = apply_filters( 'wpml_object_id', $page_id, get_post_type( $page_id ), true, $wpml_code );
-								if ( $translated_id ) {
-									$target_url    = $this->get_permalink( $translated_id );
-									$wpml_settings = get_option( 'icl_sitepress_settings' );
-									if ( isset( $wpml_settings['language_negotiation_type'] ) && $wpml_settings['language_negotiation_type'] == 1 && $wpml_code !== ( $wpml_settings['default_language'] ?? '' ) ) {
-										if ( strpos( $target_url, '://' ) === false ) {
-											$target_url = '/' . $wpml_code . $target_url;
-										} else {
-											$parts         = wp_parse_url( $target_url );
-											$parts['path'] = '/' . $wpml_code . ( $parts['path'] ?? '/' );
-											$target_url    = $this->build_url( $parts['scheme'], $parts['host'], $parts['path'], array() );
-										}
-									} elseif ( isset( $wpml_settings['language_negotiation_type'] ) && $wpml_settings['language_negotiation_type'] == 3 ) {
-										$target_url .= ( ( strpos( $target_url, '?' ) === false ) ? '?' : '&' ) . 'lang=' . $wpml_code;
-									}
-								}
+							if ( ! $target_url ) {
+								return;
 							}
 
 							if ( strpos( $target_url, '://' ) === false && $this->http_host() ) {
@@ -2506,26 +2490,10 @@ class IP2LocationRedirection {
 							return;
 						}
 
-						$target_url = $this->get_permalink( $page_id );
+						$target_url = $this->get_wpml_target( $page_id, $wpml_code );
 
-						if ( $wpml_code ) {
-
-							$translated_id = apply_filters( 'wpml_object_id', $page_id, get_post_type( $page_id ), true, $wpml_code );
-							if ( $translated_id ) {
-								$target_url    = $this->get_permalink( $translated_id );
-								$wpml_settings = get_option( 'icl_sitepress_settings' );
-								if ( isset( $wpml_settings['language_negotiation_type'] ) && $wpml_settings['language_negotiation_type'] == 1 && $wpml_code !== ( $wpml_settings['default_language'] ?? '' ) ) {
-									if ( strpos( $target_url, '://' ) === false ) {
-										$target_url = '/' . $wpml_code . $target_url;
-									} else {
-										$parts         = wp_parse_url( $target_url );
-										$parts['path'] = '/' . $wpml_code . ( $parts['path'] ?? '/' );
-										$target_url    = $this->build_url( $parts['scheme'], $parts['host'], $parts['path'], array() );
-									}
-								} elseif ( isset( $wpml_settings['language_negotiation_type'] ) && $wpml_settings['language_negotiation_type'] == 3 ) {
-									$target_url .= ( ( strpos( $target_url, '?' ) === false ) ? '?' : '&' ) . 'lang=' . $wpml_code;
-								}
-							}
+						if ( ! $target_url ) {
+							return;
 						}
 
 						if ( strpos( $target_url, '://' ) === false && $this->http_host() ) {
@@ -2581,7 +2549,7 @@ class IP2LocationRedirection {
 									parse_str( $new_parameter, $extra_queries );
 								}
 
-								$target_url = $this->build_url( $parts['scheme'], $parts['host'], $parts['path'], array_merge( $queries, $extra_queries ) );
+								$target_url = $this->build_url( $parts['scheme'] ?? '', $parts['host'] ?? '', $parts['path'] ?? '', array_merge( $queries, $extra_queries ) );
 								if ( $this->normalize_url( $this->get_current_url() ) === $this->normalize_url( $target_url ) ) {
 									return;
 								}
@@ -2605,26 +2573,10 @@ class IP2LocationRedirection {
 
 							unset( $query_string['page_id'], $query_string['p'], $query_string['add-to-cart'] );
 
-							$post_url = $this->get_permalink( $page_id );
+							$post_url = $this->get_wpml_target( $page_id, $wpml_code );
 
-							if ( $wpml_code ) {
-
-								$translated_id = apply_filters( 'wpml_object_id', $page_id, get_post_type( $page_id ), true, $wpml_code );
-								if ( $translated_id ) {
-									$post_url      = $this->get_permalink( $translated_id );
-									$wpml_settings = get_option( 'icl_sitepress_settings' );
-									if ( isset( $wpml_settings['language_negotiation_type'] ) && $wpml_settings['language_negotiation_type'] == 1 && $wpml_code !== ( $wpml_settings['default_language'] ?? '' ) ) {
-										if ( strpos( $post_url, '://' ) === false ) {
-											$post_url = '/' . $wpml_code . $post_url;
-										} else {
-											$parts         = wp_parse_url( $post_url );
-											$parts['path'] = '/' . $wpml_code . ( $parts['path'] ?? '/' );
-											$post_url      = $this->build_url( $parts['scheme'], $parts['host'], $parts['path'], array() );
-										}
-									} elseif ( isset( $wpml_settings['language_negotiation_type'] ) && $wpml_settings['language_negotiation_type'] == 3 ) {
-										$post_url .= ( ( strpos( $post_url, '?' ) === false ) ? '?' : '&' ) . 'lang=' . $wpml_code;
-									}
-								}
+							if ( ! $post_url ) {
+								return;
 							}
 
 							$parts = wp_parse_url( $post_url );
@@ -2642,33 +2594,17 @@ class IP2LocationRedirection {
 								parse_str( $new_parameter, $extra_queries );
 							}
 
-							$target_url = $this->build_url( $parts['scheme'], $parts['host'], $parts['path'], array_merge( $queries, $extra_queries ) );
+							$target_url = $this->build_url( $parts['scheme'] ?? '', $parts['host'] ?? '', $parts['path'] ?? '', array_merge( $queries, $extra_queries ) );
 							if ( $this->normalize_url( $this->get_current_url() ) === $this->normalize_url( $target_url ) ) {
 								return;
 							}
 							$this->redirect_to( $target_url, $http_code, $i, $dialog_message );
 						}
 
-						$link = $this->get_permalink( $page_id );
+						$link = $this->get_wpml_target( $page_id, $wpml_code );
 
-						if ( $wpml_code ) {
-
-							$translated_id = apply_filters( 'wpml_object_id', $page_id, get_post_type( $page_id ), true, $wpml_code );
-							if ( $translated_id ) {
-								$link          = $this->get_permalink( $translated_id );
-								$wpml_settings = get_option( 'icl_sitepress_settings' );
-								if ( isset( $wpml_settings['language_negotiation_type'] ) && $wpml_settings['language_negotiation_type'] == 1 && $wpml_code !== ( $wpml_settings['default_language'] ?? '' ) ) {
-									if ( strpos( $link, '://' ) === false ) {
-										$link = '/' . $wpml_code . $link;
-									} else {
-										$parts         = wp_parse_url( $link );
-										$parts['path'] = '/' . $wpml_code . ( $parts['path'] ?? '/' );
-										$link          = $this->build_url( $parts['scheme'], $parts['host'], $parts['path'], array() );
-									}
-								} elseif ( isset( $wpml_settings['language_negotiation_type'] ) && $wpml_settings['language_negotiation_type'] == 3 ) {
-									$link .= ( ( strpos( $link, '?' ) === false ) ? '?' : '&' ) . 'lang=' . $wpml_code;
-								}
-							}
+						if ( ! $link ) {
+							return;
 						}
 						if ( ! empty( $new_parameter ) ) {
 							$link .= ( ( strpos( $link, '?' ) === false ) ? '?' : '&' ) . $new_parameter;
@@ -8394,7 +8330,68 @@ class IP2LocationRedirection {
 			)
 		);
 
-		return ( $results ) ? $results[0]->ID : null;
+		if ( ! $results ) {
+			return null;
+		}
+
+		// WPML allows the same slug in each language; pick the one in the requested language.
+		if ( count( $results ) > 1 ) {
+			$language = $this->get_request_language();
+
+			if ( $language ) {
+				foreach ( $results as $row ) {
+					if ( $language === $this->get_post_language( $row->ID ) ) {
+						return $row->ID;
+					}
+				}
+			}
+		}
+
+		return $results[0]->ID;
+	}
+
+	private function get_request_language() {
+		$parts = wp_parse_url( $this->get_current_url() );
+
+		if ( ! empty( $parts['query'] ) ) {
+			parse_str( $parts['query'], $query );
+
+			if ( ! empty( $query['lang'] ) ) {
+				return strtolower( sanitize_text_field( $query['lang'] ) );
+			}
+		}
+
+		$segments = explode( '/', trim( $parts['path'] ?? '', '/' ) );
+		$first    = strtolower( $segments[0] );
+
+		if ( '' !== $first ) {
+			$languages = apply_filters( 'wpml_active_languages', null, array( 'skip_missing' => 0 ) );
+
+			if ( ! is_array( $languages ) || ! $languages || isset( $languages[ $first ] ) ) {
+				return $first;
+			}
+		}
+
+		$language = apply_filters( 'wpml_current_language', null );
+
+		return $language ? strtolower( $language ) : '';
+	}
+
+	private function get_post_language( $post_id ) {
+		if ( ! $this->has_wpml() ) {
+			return '';
+		}
+
+		return strtolower(
+			(string) $this->wpdb_get_value(
+				"SELECT language_code FROM {$GLOBALS['wpdb']->prefix}icl_translations WHERE element_id = %d AND element_type LIKE 'post%'",
+				array( $post_id )
+			)
+		);
+	}
+
+	private function has_wpml() {
+		return has_filter( 'wpml_object_id' );
 	}
 
 	private function get_post_title( $post_id ) {
@@ -8414,15 +8411,137 @@ class IP2LocationRedirection {
 			)
 		);
 
-		if ( $results ) {
-			if ( preg_match( '/page_id=[0-9]+$/', $results[0]->guid ) ) {
-				return '/' . $results[0]->post_name;
-			}
-
-			return $results[0]->guid;
+		if ( ! $results ) {
+			return null;
 		}
 
-		return null;
+		$post = $results[0];
+
+		// A new post or page stores a query string guid, e.g. "?p=12" or "https://example.com/?p=12".
+		if ( ! preg_match( '/[?&](p|page_id)=[0-9]+$/', $post->guid ) ) {
+			return $post->guid;
+		}
+
+		$path = $this->get_post_path( $post );
+
+		if ( null !== $path ) {
+			return $path;
+		}
+
+		return ( 'page' === $post->post_type ) ? '/?page_id=' . (int) $post->ID : '/?p=' . (int) $post->ID;
+	}
+
+	private function get_post_path( $post ) {
+		$structure = trim( (string) get_option( 'permalink_structure' ), '/' );
+
+		if ( '' === $structure ) {
+			return null;
+		}
+
+		if ( 'page' === $post->post_type ) {
+			$segments = array( $post->post_name );
+			$parent   = (int) $post->post_parent;
+
+			for ( $i = 0; $parent && $i < 20; $i++ ) {
+				$rows = $this->wpdb_get_results(
+					"SELECT post_name, post_parent FROM {$GLOBALS['wpdb']->prefix}posts WHERE ID = %d",
+					array( $parent )
+				);
+
+				if ( ! $rows ) {
+					break;
+				}
+
+				array_unshift( $segments, $rows[0]->post_name );
+				$parent = (int) $rows[0]->post_parent;
+			}
+
+			return '/' . implode( '/', array_filter( $segments ) );
+		}
+
+		$path = strtr(
+			$structure,
+			array(
+				'%postname%' => $post->post_name,
+				'%post_id%'  => $post->ID,
+				'%year%'     => substr( $post->post_date, 0, 4 ),
+				'%monthnum%' => substr( $post->post_date, 5, 2 ),
+				'%day%'      => substr( $post->post_date, 8, 2 ),
+			)
+		);
+
+		// Leave tokens we cannot resolve here (e.g. %category%) to the caller's fallback.
+		if ( preg_match( '/%[a-z_]+%/i', $path ) ) {
+			return null;
+		}
+
+		return '/' . $path;
+	}
+
+	private function get_wpml_target( $page_id, $wpml_code ) {
+		$url = $this->get_permalink( $page_id );
+
+		if ( ! $wpml_code ) {
+			return $url;
+		}
+
+		$translated_id = apply_filters( 'wpml_object_id', $page_id, get_post_type( $page_id ), true, $wpml_code );
+
+		if ( ! $translated_id ) {
+			return $url;
+		}
+
+		if ( $this->is_current_translation( $translated_id, $wpml_code ) ) {
+			return null;
+		}
+
+		$url = $this->get_permalink( $translated_id );
+
+		if ( ! $url ) {
+			return null;
+		}
+
+		$wpml_settings = get_option( 'icl_sitepress_settings' );
+
+		if ( isset( $wpml_settings['language_negotiation_type'] ) ) {
+			if ( 1 == $wpml_settings['language_negotiation_type'] && $wpml_code !== ( $wpml_settings['default_language'] ?? '' ) ) {
+				if ( strpos( $url, '://' ) === false ) {
+					$url = '/' . $wpml_code . '/' . ltrim( $url, '/' );
+				} else {
+					$parts         = wp_parse_url( $url );
+					$parts['path'] = '/' . $wpml_code . '/' . ltrim( $parts['path'] ?? '/', '/' );
+					$url           = $this->build_url( $parts['scheme'], $parts['host'], $parts['path'], array() );
+				}
+			} elseif ( 3 == $wpml_settings['language_negotiation_type'] ) {
+				$url .= ( ( strpos( $url, '?' ) === false ) ? '?' : '&' ) . 'lang=' . $wpml_code;
+			}
+		}
+
+		return $url;
+	}
+
+	private function is_current_translation( $translated_id, $wpml_code ) {
+		if ( ! $wpml_code || $this->get_request_language() !== strtolower( $wpml_code ) ) {
+			return false;
+		}
+
+		$current_id = $this->get_page_id();
+
+		if ( $current_id ) {
+			return (int) $current_id === (int) $translated_id;
+		}
+
+		if ( $this->is_home() ) {
+			$front_id = (int) get_option( 'page_on_front' );
+
+			if ( ! $front_id ) {
+				return false;
+			}
+
+			return (int) $translated_id === (int) apply_filters( 'wpml_object_id', $front_id, 'page', true, $wpml_code );
+		}
+
+		return false;
 	}
 
 	private function sanitize_array( $array ) {
