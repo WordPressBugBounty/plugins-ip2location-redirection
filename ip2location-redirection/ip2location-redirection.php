@@ -4,7 +4,7 @@
  * Plugin Name: IP2Location Redirection
  * Plugin URI: https://ip2location.com/resources/wordpress-ip2location-redirection
  * Description: Redirect visitors by their country.
- * Version: 1.43.1
+ * Version: 1.43.2
  * Requires PHP: 7.4
  * Author: IP2Location
  * Author URI: https://www.ip2location.com
@@ -274,10 +274,9 @@ class IP2LocationRedirection {
 
 		switch ( $page ) {
 			case 'rules':
-				wp_enqueue_script( 'iplr-rules-js', plugins_url( '/assets/js/rules.js?t=' . microtime( true ), __FILE__ ), array( 'jquery' ), $ver, true );
+				wp_enqueue_script( 'iplr-rules-js', plugins_url( '/assets/js/rules.js?t=' . microtime( true ), __FILE__ ), array( 'jquery', 'jquery-ui-autocomplete' ), $ver, true );
 				wp_enqueue_script( 'iplr-chosen-js', plugins_url( '/assets/js/chosen.jquery.min.js', __FILE__ ), array( 'jquery' ), $ver, true );
 				wp_enqueue_script( 'iplr-tagsinput-js', plugins_url( '/assets/js/jquery.tagsinput.min.js', __FILE__ ), array( 'jquery' ), $ver, true );
-				wp_enqueue_script( 'iplr-jquery-ui', plugins_url( '/assets/js/jquery-ui.min.js', __FILE__ ), array( 'jquery' ), $ver, true );
 
 				wp_enqueue_style( 'iplr-chosen-css', plugins_url( '/assets/css/chosen.min.css', __FILE__ ), array(), $ver );
 				wp_enqueue_style( 'iplr-tagsinput-css', plugins_url( '/assets/css/jquery.tagsinput.min.css', __FILE__ ), array(), $ver );
@@ -2685,7 +2684,7 @@ class IP2LocationRedirection {
 			$footer_text .= sprintf(
 				/* translators: %1$s: a value, %2$s: a value. */                __( 'Enjoyed %1$s? Please leave us a %2$s rating. A huge thanks in advance!', 'ip2location-redirection' ),
 				'<strong>' . __( 'IP2Location Redirection', 'ip2location-redirection' ) . '</strong>',
-				'<a href="https://wordpress.org/support/plugin/ip2location-redirection/reviews/?filter=5/#new-post" target="_blank">&#9733;&#9733;&#9733;&#9733;&#9733;</a>'
+				'<a href="https://wordpress.org/support/plugin/ip2location-redirection/reviews/#new-post" target="_blank">&#9733;&#9733;&#9733;&#9733;&#9733;</a>'
 			);
 		}
 

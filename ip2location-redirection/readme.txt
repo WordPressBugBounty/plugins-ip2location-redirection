@@ -4,7 +4,7 @@ Donate link: https://www.ip2location.com
 Tags: ip2location, country redirection, website redirect, page redirector, redirection
 Requires at least: 4.6
 Tested up to: 7.1
-Stable tag: 1.43.1
+Stable tag: 1.43.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -64,6 +64,7 @@ Send us an email at support@ip2location.com
 1. Redirect visitor from California and New York to https://google.com.
 
 == Changelog ==
+* 1.43.2 Fixed asset issues.
 * 1.43.1 Fixed WPML post destinations, the front page loop with the language parameter, same-slug pages in another language, and upper case language codes.
 * 1.43.0 Added country groups in rules, added placeholders in destination URLs with an inline guide, further optimize statistics and settings pages.
 * 1.42.4 Fixed the settings page markup so the admin footer stays at the bottom.
